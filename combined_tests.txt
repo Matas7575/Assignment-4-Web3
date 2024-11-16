@@ -1,0 +1,1624 @@
+// file: __test__\model\deck.test.ts
+import { describe, it, expect, beforeEach, jest } from '@jest/globals'
+import { createInitialDeck } from '../utils/test_adapter'
+import { standardShuffler } from '../../src/utils/random_utils'
+import { is } from '../utils/predicates'
+import * as deck from '../../src/model/deck'
+import { memoizingShuffler } from '../utils/shuffling'
+
+describe("Initial deck", () => {
+  const initialDeck = createInitialDeck()
+  it("contains 19 numbered blue cards", () => {
+    expect(
+      initialDeck
+      .filter(is({type: 'NUMBERED', color: 'BLUE'}))
+      .size)
+    .toEqual(19)
+  })
+  it("contains 19 numbered green cards", () => {
+    expect(
+      initialDeck
+      .filter(is({type: 'NUMBERED', color: 'GREEN'}))
+      .size)
+    .toEqual(19)
+  })
+  it("contains 19 numbered red cards", () => {
+    expect(
+      initialDeck
+      .filter(is({type: 'NUMBERED', color: 'RED'}))
+      .size)
+    .toEqual(19)
+  })
+  it("contains 19 numbered yellow cards", () => {
+    expect(
+      initialDeck
+      .filter(is({type: 'NUMBERED', color: 'YELLOW'}))
+      .size)
+    .toEqual(19)
+  })
+  it("only contains numbered card with numbers between 0 and 9", () => {
+    const numberedDeck = initialDeck.filter(is({type: 'NUMBERED'}))
+    while(numberedDeck.size > 0) {
+      const n = (numberedDeck.deal() as {number: number}).number
+      expect(n).toBeGreaterThanOrEqual(0)
+      expect(n).toBeLessThan(10)
+    }
+  })
+  it("contains numbered cards of every legal number and color", () => {
+    for(let color of deck.colors) {
+      expect(initialDeck.filter(is({number: 0, color})).size).toBe(1)
+    }
+  for(let number = 1; number < 10; number++) {
+      for(let color of deck.colors) {
+        expect(initialDeck.filter(is({number, color})).size).toBe(2)
+      }
+    }
+  })
+  it("contains 8 skip cards", () => {
+    expect(initialDeck.filter(is({type: 'SKIP'})).size).toEqual(8)
+  })
+  it("contains 2 skip cards of each color", () => {
+    for(let color of deck.colors) {
+      expect(initialDeck.filter(is({type: 'SKIP', color})).size).toBe(2)
+    }
+  })
+  it("contains 8 reverse cards", () => {
+    expect(initialDeck.filter(is({type: 'REVERSE'})).size).toEqual(8)
+  })
+  it("contains 2 reverse cards of each color", () => {
+    for(let color of deck.colors) {
+      expect(initialDeck.filter(is({type: 'REVERSE', color})).size).toBe(2)
+    }
+  })
+  it("contains 8 draw cards", () => {
+    expect(initialDeck.filter(is({type: 'DRAW'})).size).toEqual(8)
+  })
+  it("contains 2 draw cards of each color", () => {
+    for(let color of deck.colors) {
+      expect(initialDeck.filter(is({type:'DRAW',color})).size).toBe(2)
+    }
+  })
+  it("contains 4 wild cards", () => {
+    expect(initialDeck.filter(is({type:'WILD'})).size).toEqual(4)
+  })
+  it("contains 4 wild draw cards", () => {
+    expect(initialDeck.filter(is({ type:'WILD DRAW' })).size).toEqual(4)
+  })
+  // Blank cards skipped, since they have no gameplay
+  it("contains 108 cards", () => {
+    expect(initialDeck.size).toEqual(108)
+  })
+})
+
+describe("Deck methods", () => {
+  describe("shuffle", () => {
+    const deck = createInitialDeck()
+    it("calls the shuffler", () => {
+      const mockShuffler = jest.fn()
+      deck.shuffle(mockShuffler)
+      expect(mockShuffler).toHaveBeenCalled()
+    })
+  })
+  describe("deal", () => {
+    let deck: deck.Deck = createInitialDeck()
+    let shuffledCards: Readonly<deck.Card[]> = []
+    const memoShuffler = memoizingShuffler(standardShuffler)
+    beforeEach(() => {
+      deck = createInitialDeck()
+      deck.shuffle(memoShuffler.shuffler)
+      shuffledCards = memoShuffler.memo
+    })
+    it("removes a card", () => {
+      const deckSize = deck.size
+      deck.deal()
+      expect(deck.size).toEqual(deckSize - 1)
+    })
+    it("returns all cards in order", () => {
+      const deckSize = deck.size
+      for(let i = 0; i < deckSize; i++) {
+        expect(deck.deal()).toEqual(shuffledCards[i])
+      }
+    })
+    it("returns undefined if the deck is empty", () => {
+      while(deck.size > 0) { 
+        deck.deal() 
+      }
+      expect(deck.deal()).toBeUndefined()
+    })
+  })
+})
+
+
+// file: __test__\model\hand.going.out.test.ts
+import { describe, it, test, expect, beforeEach } from '@jest/globals'
+import { createHand} from '../utils/test_adapter'
+import { Hand } from '../../src/model/hand'
+import { shorteningShuffler, shuffleBuilder, successiveShufflers } from '../utils/shuffling'
+
+describe('catching failure to say "UNO!"', () => {
+  const builder = shuffleBuilder({players: 4, cardsPerPlayer: 2})
+    .discard().is({type: 'NUMBERED', color: 'YELLOW', number: 0})
+    .drawPile()
+      .is({type: 'NUMBERED', color: 'BLUE', number: 0})
+      .is({type: 'NUMBERED', color: 'RED', number: 2})
+      .is({type: 'NUMBERED', color: 'RED', number: 3})
+      .is({type: 'NUMBERED', color: 'RED', number: 5})
+    .hand(0).is({type: 'NUMBERED', color: 'BLUE', number: 8}, {type: 'SKIP', color: 'BLUE'})
+    .hand(1).is({type: 'NUMBERED', color: 'RED', number: 8}, {type: 'SKIP', color: 'GREEN'})
+    .hand(2).is({type: 'NUMBERED', color: 'GREEN', number: 8}, {type: 'DRAW', color: 'RED'})
+    .hand(3).is({type: 'NUMBERED', color: 'RED', number: 4}, {type: 'REVERSE', color: 'RED'})
+  let hand: Hand = undefined as any
+  describe("single UNO scenario", () => {
+    beforeEach(() => {
+      const shuffler = builder.build()
+      hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 2})
+      hand.draw()
+      hand.play(hand.playerHand(0).length - 1)
+      hand.draw()
+      hand.draw()
+      hand.draw()
+    })
+    test("set up is as expected", () => {
+      expect(hand.playerHand(0).length).toEqual(2)
+      expect(hand.playerHand(1).length).toEqual(3)
+      expect(hand.playerHand(2).length).toEqual(3)
+      expect(hand.playerHand(3).length).toEqual(3)
+      expect(hand.playerInTurn()).toEqual(0)
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("fails if the player hasn't played penultimate card", () => {
+      expect(hand.catchUnoFailure({accuser: 1, accused: 0})).toBeFalsy()
+    })
+    it("succeeds if the player has one card and hasn't said 'UNO!'", () => {
+      hand.play(0)
+      expect(hand.catchUnoFailure({accuser: 1, accused: 0})).toBeTruthy()
+    })
+    it("adds 4 cards to the hand of the accused player if successful", () => {
+      hand.play(0)
+      hand.catchUnoFailure({accuser: 1, accused: 0})
+      expect(hand.playerHand(0).length).toBe(5)
+    })
+    it("takes the added cards from the draw pile", () => {
+      hand.play(0)
+      const drawPileSize = hand.drawPile().size
+      hand.catchUnoFailure({accuser: 1, accused: 0})
+      expect(hand.drawPile().size).toBe(drawPileSize - 4)
+    })
+    it("succeeds irrespective of the accuser", () => {
+      hand.play(0)
+      expect(hand.catchUnoFailure({accuser: 2, accused: 0})).toBeTruthy()
+    })
+    it("fails if the next player has already played", () => {
+      hand.play(0)
+      hand.play(0)
+      expect(hand.catchUnoFailure({accuser: 3, accused: 0})).toBeFalsy()
+    })
+    it("fails if the next player has drawn a card", () => {
+      hand.play(1)
+      hand.draw()
+      expect(hand.catchUnoFailure({accuser: 3, accused: 0})).toBeFalsy()
+    })
+    it("cannot be applied twice", () => {
+      hand.play(0)
+      expect(hand.catchUnoFailure({accuser: 2, accused: 0})).toBeTruthy()
+      expect(hand.catchUnoFailure({accuser: 2, accused: 0})).toBeFalsy()
+    })
+    it("can succeed after first accusing the wrong player", () => {
+      hand.play(0)
+      expect(hand.catchUnoFailure({accuser: 2, accused: 1})).toBeFalsy()
+      expect(hand.catchUnoFailure({accuser: 2, accused: 0})).toBeTruthy()
+    })
+    it("fails if the accused has said 'UNO!' before playing", () => {
+      hand.sayUno(0)
+      hand.play(0)
+      expect(hand.catchUnoFailure({accuser: 2, accused: 0})).toBeFalsy()
+    })
+    it("fails if the accused has said 'UNO!' after playing but before the accusation", () => {
+      hand.play(0)
+      hand.sayUno(0)
+      expect(hand.catchUnoFailure({accuser: 2, accused: 0})).toBeFalsy()
+    })
+    it("still succeeds if the player has said 'UNO!' before another player draws", () => {
+      const shuffler = builder.build()
+      hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 2})
+      hand.draw()
+      hand.play(hand.playerHand(0).length - 1)
+      hand.draw()
+      hand.draw()
+      hand.sayUno(0) // player 3 is in turn
+      hand.draw()
+      hand.play(0)
+      expect(hand.catchUnoFailure({accuser: 1, accused: 0})).toBeTruthy()    
+    })
+
+    
+  })
+
+  describe("emptying the draw pile", () => {
+    beforeEach(() => {
+      builder.hand(3).is({type: 'NUMBERED', color: 'BLUE', number: 4}, {type: 'REVERSE', color: 'RED'})
+      const shuffler = successiveShufflers(shorteningShuffler(14, builder.build()), () => {})
+      hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 2})
+      hand.draw()
+      hand.play(hand.playerHand(0).length - 1)
+      hand.draw()
+      hand.draw()
+      hand.sayUno(3)
+      hand.play(0)
+    })
+    test("set up is as expected", () => {
+      expect(hand.playerHand(0).length).toEqual(2)
+      expect(hand.playerHand(1).length).toEqual(3)
+      expect(hand.playerHand(2).length).toEqual(3)
+      expect(hand.playerHand(3).length).toEqual(1)
+      expect(hand.playerInTurn()).toEqual(0)
+      expect(hand.canPlay(0)).toBeTruthy()
+      expect(hand.drawPile().size).toEqual(2)
+      expect(hand.discardPile().size).toEqual(3)
+    })
+    test("adding 4 cards to the hand shuffles the draw pile if necessary", () => {
+      hand.play(0)
+      expect(hand.drawPile().size).toEqual(2)
+      expect(hand.discardPile().size).toEqual(4)
+      hand.catchUnoFailure({accuser: 1, accused: 0})
+      expect(hand.playerHand(0).length).toBe(5)
+      expect(hand.drawPile().size).toEqual(1)
+      expect(hand.discardPile().size).toEqual(1)
+    })
+  })
+
+  describe("Multi UNO scenario", () => {
+    beforeEach(() => {
+      builder.hand(3).is({type: 'NUMBERED', color: 'BLUE', number: 4}, {type: 'REVERSE', color: 'RED'})
+      const shuffler = builder.build()
+      hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 2})
+      hand.draw()
+      hand.play(hand.playerHand(0).length - 1)
+      hand.draw()
+      hand.draw()
+    })
+    test("set up is as expected", () => {
+      expect(hand.playerHand(0).length).toEqual(2)
+      expect(hand.playerHand(1).length).toEqual(3)
+      expect(hand.playerHand(2).length).toEqual(3)
+      expect(hand.playerHand(3).length).toEqual(2)
+      expect(hand.playerInTurn()).toEqual(3)
+      expect(hand.canPlay(0)).toBeTruthy()
+      hand.play(0)
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("still succeeds if the player has said 'UNO!' before another player plays", () => {
+      hand.sayUno(0)
+      hand.sayUno(3)
+      hand.play(0)
+      hand.play(0)
+      expect(hand.catchUnoFailure({accuser: 1, accused: 0})).toBeTruthy()    
+    })
+    it("still fails even if another player says 'UNO!' after", () => {
+      hand.play(0)
+      hand.sayUno(0)
+      hand.sayUno(3)
+      hand.play(0)
+      expect(hand.catchUnoFailure({accuser: 1, accused: 0})).toBeFalsy()    
+    })
+    it("still fails even if another player has already said 'UNO!'", () => {
+      hand.play(0)
+      hand.sayUno(0)
+      hand.sayUno(3)
+      expect(hand.catchUnoFailure({accuser: 1, accused: 3})).toBeFalsy()    
+    })
+  })
+
+  describe("boundaries", () => {
+    const shuffler = builder.build()
+    const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 2})
+    test("accused cannot be negative", () => {
+      expect(() => hand.catchUnoFailure({accused: -1, accuser: 0})).toThrow()
+    })
+    test("accused cannot be beyond the player count", () => {
+      expect(() => hand.catchUnoFailure({accused: 4, accuser: 0})).toThrow()
+    })
+    test("the player saying 'UNO!' cannot be negative", () => {
+      expect(() => hand.sayUno(-1)).toThrow()
+    })
+    test("the player saying 'UNO!' cannot be beyond the player count", () => {
+      expect(() => hand.sayUno(4)).toThrow()
+    })
+  })
+})
+
+describe("ending the hand", () => {
+  describe("before playing the last card", () => {
+    const shuffler = shuffleBuilder({ players: 4, cardsPerPlayer: 1 })
+      .discard().is({ type: 'NUMBERED', color: 'BLUE', number: 8 })
+      .hand(0).is({ type: 'NUMBERED', color: 'GREEN', number: 8 })
+      .hand(1).is({ type: 'NUMBERED', color: 'GREEN', number: 4 })
+      .build()
+    const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    it("returns false from hasEnded()", () => {
+      expect(hand.hasEnded()).toBeFalsy()
+    })
+    it("doesn't return a winner", () => {
+      expect(hand.winner()).toBeUndefined();
+    })
+  })
+
+  describe("playing the last card", () => {
+    const shuffler = shuffleBuilder({ players: 4, cardsPerPlayer: 1 })
+      .discard().is({ type: 'NUMBERED', color: 'BLUE', number: 8 })
+      .hand(0).is({ type: 'NUMBERED', color: 'GREEN', number: 8 })
+      .hand(1).is({ type: 'NUMBERED', color: 'GREEN', number: 4 })
+      .build()
+    const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.play(0)
+    it("returns true from hasEnded()", () => {
+      expect(hand.hasEnded()).toBeTruthy()
+    })
+    it("returns the winner", () => {
+      expect(hand.winner()).toEqual(0);
+    })
+    it("makes the player in turn undefined", () => {
+      expect(hand.playerInTurn()).toBeUndefined()
+    })
+    it("ceases play", () => {
+      expect(hand.canPlay(0)).toBeFalsy()
+      expect(hand.canPlayAny()).toBeFalsy()
+    })
+    it("gives error on attempted play", () => {
+      expect(() => hand.play(0)).toThrow()
+    })
+    it("gives error on attempted draw", () => {
+      expect(() => hand.draw()).toThrow()
+    })
+    it("gives error on attempting to say 'UNO!'", () => {
+      expect(() => hand.sayUno(1)).toThrow()
+    })
+  })
+})
+
+describe("score", () => {
+  const builder = shuffleBuilder({ players: 2, cardsPerPlayer: 1 })
+    .discard().is({ type: 'NUMBERED', color: 'BLUE', number: 8 })
+    .hand(0).is({ type: 'NUMBERED', color: 'GREEN', number: 8 })
+  it("is undefined before the last card is played", () => {
+    const shuffler = builder.build()
+    const hand = createHand({players: ['a', 'b'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    expect(hand.score()).toBeUndefined()
+  })
+  it("is defined after the last card is played", () => {
+    const shuffler = builder.build()
+    const hand = createHand({players: ['a', 'b'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.play(0)
+    expect(hand.score()).toBeDefined()
+  })
+  it("has the value of the card number if the opponent holds a numbered card", () => {
+    for(let number = 0; number <= 9; number++) {
+      builder.hand(1).is({type: 'NUMBERED', number})
+      const shuffler = builder.build()
+      const hand = createHand({players: ['a', 'b'], dealer: 3, shuffler, cardsPerPlayer: 1})
+      hand.play(0)
+      expect(hand.score()).toEqual(number)
+    }
+  })
+  it("has the value 20 if the opponent holds a draw card", () => {
+    builder.hand(1).is({type: 'DRAW'})
+    const shuffler = builder.build()
+    const hand = createHand({players: ['a', 'b'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.play(0)
+    expect(hand.score()).toEqual(20)
+  })
+  it("has the value 20 if the opponent holds a reverse card", () => {
+    builder.hand(1).is({type: 'REVERSE'})
+    const shuffler = builder.build()
+    const hand = createHand({players: ['a', 'b'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.play(0)
+    expect(hand.score()).toEqual(20)
+  })
+  it("has the value 20 if the opponent holds a skip card", () => {
+    builder.hand(1).is({type: 'SKIP'})
+    const shuffler = builder.build()
+    const hand = createHand({players: ['a', 'b'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.play(0)
+    expect(hand.score()).toEqual(20)
+  })
+  it("has the value 50 if the opponent holds a wild card", () => {
+    builder.hand(1).is({type: 'WILD'})
+    const shuffler = builder.build()
+    const hand = createHand({players: ['a', 'b'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.play(0)
+    expect(hand.score()).toEqual(50)
+  })
+  it("has the value 50 if the opponent holds a wild draw card", () => {
+    builder.hand(1).is({type: 'WILD DRAW'})
+    const shuffler = builder.build()
+    const hand = createHand({players: ['a', 'b'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.play(0)
+    expect(hand.score()).toEqual(50)
+  })
+  it("adds the cards if the opponent have more than one card", () => {
+    builder.hand(0).is({color: 'BLUE', type: 'DRAW'})
+    builder.hand(1).is({type: 'WILD DRAW'})
+    builder.drawPile().is({number: 5}, {type: 'REVERSE'})
+    const shuffler = builder.build()
+    const hand = createHand({players: ['a', 'b'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.play(0)
+    expect(hand.playerHand(1).length).toEqual(3)
+    expect(hand.score()).toEqual(75)
+  })
+  it("adds the cards of all opponents if there are more than 2 players", () => {
+    const builder = shuffleBuilder({ players: 4, cardsPerPlayer: 1 })
+      .discard().is({ type: 'NUMBERED', color: 'BLUE', number: 8 })
+      .hand(0).is({color: 'BLUE', type: 'DRAW'})
+      .hand(1).is({type: 'WILD DRAW'})
+      .hand(2).is({number: 7})
+      .hand(3).is({number: 3})
+      .drawPile().is({number: 5}, {type: 'REVERSE'})
+    const shuffler = builder.build()
+    const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.play(0)
+    expect(hand.playerHand(1).length).toEqual(3)
+    expect(hand.score()).toEqual(85)
+  })
+})
+
+describe("callback", () => {
+  const builder = shuffleBuilder({ players: 4, cardsPerPlayer: 1 })
+    .discard().is({ type: 'NUMBERED', color: 'BLUE', number: 8 })
+    .drawPile().is({number: 8})
+    .hand(0).is({color: 'GREEN', type: 'DRAW'})
+    .hand(1).is({type: 'WILD DRAW'})
+    .hand(2).is({number: 7})
+    .hand(3).is({number: 3})
+  const shuffler = builder.build()
+  test("callback gets called at the end of the hand", () => {
+    const events: any[] = []
+    const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.onEnd(e => events.push(e))
+    hand.draw()
+    hand.play(1)
+    hand.play(0, 'YELLOW')
+    expect(events).toEqual([{winner: 1}])
+  })
+  test("all callbacks get called at the end of the hand", () => {
+    const events: any[] = []
+    const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.onEnd(e => events.push(e))
+    hand.onEnd(e => events.push(e))
+    hand.draw()
+    hand.play(1)
+    hand.play(0, 'YELLOW')
+    expect(events).toEqual([{winner: 1}, {winner: 1}])
+  })
+})
+
+
+// file: __test__\model\hand.legal.plays.test.ts
+import { describe, it, expect, beforeEach } from '@jest/globals'
+import { createHand} from '../utils/test_adapter'
+import { Hand } from '../../src/model/hand'
+import { shuffleBuilder } from '../utils/shuffling'
+
+describe("Legal plays", () => {
+  describe("Legal plays on a numbered card", () => {
+    let builder = shuffleBuilder()
+    beforeEach(() => {
+      builder = shuffleBuilder().discard().is({type: 'NUMBERED', color: 'BLUE', number: 6})
+    })
+    it("is legal to play a numbered card in the same color as the top card", () => {
+      const shuffler = builder.hand(0).is({type: 'NUMBERED', color: 'BLUE', number: 3}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a card with different number and color than the top card", () => {
+      const shuffler = builder.hand(0).is({type: 'NUMBERED', color: 'RED', number: 3}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a card with the same number as the top card", () => {
+      const shuffler = builder.hand(0).is({type: 'NUMBERED', color: 'RED', number: 6}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is legal to play a reverse card in the same color as the top card", () => {
+      const shuffler = builder.hand(0).is({type: 'REVERSE', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a reverse card in a different color as the top card", () => {
+      const shuffler = builder.hand(0).is({type: 'REVERSE', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a skip card in the same color as the top card", () => {
+      const shuffler = builder.hand(0).is({type: 'SKIP', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a skip card in a different color as the top card", () => {
+      const shuffler = builder.hand(0).is({type: 'SKIP', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a draw card in the same color as the top card", () => {
+      const shuffler = builder.hand(0).is({type: 'DRAW', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a draw card in a different color as the top card", () => {
+      const shuffler = builder.hand(0).is({type: 'DRAW', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a wild card on a numbered top card", () => {
+      const shuffler = builder.hand(0).is({type: 'WILD'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+  })
+
+  describe("legal plays on a reverse card", () => {
+    let builder = shuffleBuilder()
+    beforeEach(() => {
+      builder = shuffleBuilder().discard().is({type: 'REVERSE', color: 'BLUE'})
+    })
+    it("is legal to play a card in the same color as the top card", () => {
+      const shuffler = builder.hand(2).is({type: 'NUMBERED', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a non-reverse card with different color than the top card", () => {
+      const shuffler = builder.hand(2).is({type: 'NUMBERED', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a reverse card", () => {
+      const shuffler = builder.hand(2).is({type: 'REVERSE', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is legal to play a skip card in the same color as the top card", () => {
+      const shuffler = builder.hand(2).is({type: 'SKIP', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a skip card in a different color as the top card", () => {
+      const shuffler = builder.hand(2).is({type: 'SKIP', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a draw card in the same color as the top card", () => {
+      const shuffler = builder.hand(2).is({type: 'DRAW', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a draw card in a different color as the top card", () => {
+      const shuffler = builder.hand(2).is({type: 'DRAW', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a wild card on a reverse top card", () => {
+      const shuffler = builder.hand(2).is({type: 'WILD'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+  })
+
+  describe("legal plays on a skip card", () => {
+    let builder = shuffleBuilder()
+    beforeEach(() => {
+      builder = shuffleBuilder().discard().is({type: 'SKIP', color: 'BLUE'})
+    })
+    it("is legal to play a card in the same color as the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'NUMBERED', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a non-skip card with different color than the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'NUMBERED', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a skip card", () => {
+      const shuffler = builder.hand(1).is({type: 'SKIP', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is legal to play a reverse card in the same color as the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'REVERSE', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a reverse card in a different color as the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'REVERSE', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a draw card in the same color as the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'DRAW', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a draw card in a different color as the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'DRAW', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a wild card on a skip top card", () => {
+      const shuffler = builder.hand(1).is({type: 'WILD'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+  })
+
+  describe("legal plays on a draw card", () => {
+    let builder = shuffleBuilder()
+    beforeEach(() => {
+      builder = shuffleBuilder().discard().is({type: 'DRAW', color: 'BLUE'})
+    })
+    it("is legal to play a card in the same color as the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'NUMBERED', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a non-skip card with different color than the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'NUMBERED', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a draw card", () => {
+      const shuffler = builder.hand(1).is({type: 'DRAW', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is legal to play a reverse card in the same color as the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'REVERSE', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a reverse card in a different color as the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'REVERSE', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a skip card in the same color as the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'SKIP', color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is not legal to play a skip card in a different color as the top card", () => {
+      const shuffler = builder.hand(1).is({type: 'SKIP', color: 'RED'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a wild card on a skip top card", () => {
+      const shuffler = builder.hand(1).is({type: 'WILD'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+  })
+
+  describe("legal plays with a wild draw 4 card", () => {
+    it("is illegal to play a wild draw 4 card if hand contains a card with matching color", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'GREEN'})
+        .hand(0
+
+        ).is({type: 'WILD DRAW'}, {color: 'GREEN'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a wild draw 4 card if hand doesn't contain another playable card", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'GREEN', number: 2})
+        .hand(0)
+          .is({type: 'WILD DRAW'})
+          .is({type: 'NUMBERED', color: 'BLUE', number: 0})
+          .is({type: 'NUMBERED', color: 'RED', number: 3})
+          .is({type: 'NUMBERED', color: 'YELLOW', number: 7})
+          .is({type: 'DRAW', color: 'BLUE'})
+          .is({type: 'REVERSE', color: 'RED'})
+          .is({type: 'SKIP', color: 'YELLOW'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is legal to play a wild draw 4 card even if hand contains a card with the right number", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'GREEN', number: 3})
+        .hand(0)
+          .is({type: 'WILD DRAW'})
+          .is({type: 'NUMBERED', color: 'RED', number: 3})
+          .repeat(5).isnt({color: 'GREEN'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is legal to play a wild draw 4 card even if hand contains a eligible draw card", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'DRAW', color: 'GREEN'})
+        .hand(1)
+          .is({type: 'WILD DRAW'})
+          .is({type: 'DRAW', color: 'RED'})
+          .repeat(5).isnt({color: 'GREEN'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is legal to play a wild draw 4 card if hand contains a eligible skip card", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'SKIP', color: 'GREEN'})
+        .hand(1)
+          .is({type: 'WILD DRAW'})
+          .is({type: 'SKIP', color: 'RED'})
+          .repeat(5).isnt({color: 'GREEN'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is legal to play a wild draw 4 card if hand contains a eligible reverse card", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'REVERSE', color: 'GREEN'})
+        .hand(2)
+          .is({type: 'WILD DRAW'})
+          .is({type: 'REVERSE', color: 'RED'})
+          .repeat(5).isnt({color: 'GREEN'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is legal to play a wild draw 4 card if hand contains a wild card", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'GREEN'})
+        .hand(0)
+          .is({type: 'WILD DRAW'})
+          .is({type: 'WILD'})
+          .repeat(5).isnt({color: 'GREEN'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+  })
+
+  describe("legal plays on a wild card", () => {
+    let builder = shuffleBuilder()
+    beforeEach(() => {
+      builder = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED'})
+        .hand(0)
+          .is({type: 'WILD'})
+    })
+    it("is legal to play a hand of the chosen color after a wild card", () => {
+      const shuffler = builder.hand(1).is({color: 'BLUE'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.play(0, 'BLUE')
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is illegal to play a hand of another color but the chosen after a wild card", () => {
+      const shuffler = builder.hand(1).is({color: ['GREEN', 'RED', 'YELLOW']}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.play(0, 'BLUE')
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+    it("is legal to play a wild card after a wild card", () => {
+      const shuffler = builder.hand(1).is({type: 'WILD'}).build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.play(0, 'BLUE')
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is legal to play a wild draw 4 card if hand doesn't contain the selected color", () => {
+      const shuffler = builder
+        .hand(1)
+          .is({type: 'WILD DRAW'})
+          .repeat(6).isnt({color: 'GREEN'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.play(0, 'GREEN')
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+    it("is illegal to play a wild draw 4 card if hand contains the selected color", () => {
+      const shuffler = builder
+        .hand(1)
+          .is({type: 'WILD DRAW'})
+          .is({color: 'GREEN'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.play(0, 'GREEN')
+      expect(hand.canPlay(0)).toBeFalsy()
+    })
+  })
+
+  describe("boundary conditions", () => {
+    it("is illegal to play a card with negative index", () => {
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3})
+      expect(hand.canPlay(-1)).toBeFalsy()
+    })
+    it("is illegal to play a card with index beyond the maximum", () => {
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3})
+      expect(hand.canPlay(7)).toBeFalsy()
+    })
+  })
+})
+
+
+// file: __test__\model\hand.playing.test.ts
+import { describe, it, test, expect, beforeEach, jest } from '@jest/globals'
+import { createHand} from '../utils/test_adapter'
+import { Hand } from '../../src/model/hand'
+import { shorteningShuffler, shuffleBuilder, successiveShufflers } from '../utils/shuffling'
+import { is } from '../utils/predicates'
+
+describe("Playing a card", () => {
+  it("throws on illegal plays", () => {
+    const shuffler = shuffleBuilder()
+      .discard()
+        .is({type: 'NUMBERED', color: 'BLUE', number: 6})
+      .hand(0)
+        .is({type: 'NUMBERED', color: 'RED', number: 3})
+      .build()
+    const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+    expect(() => hand.play(0)).toThrow()
+  })
+
+  describe("Playing a numbered card", () => {
+    let hand: Hand = undefined as any
+    beforeEach(() => {
+      const builder = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE', number: 6})
+        .hand(0)
+          .is({type: 'NUMBERED', color: 'BLUE', number: 3})
+      hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler: builder.build()})
+    })
+    it("removes the card from the players hand", () => {
+      hand.play(0)
+      expect(hand.playerHand(0).length).toEqual(6)
+    })
+    it("places the card on the discard pile", () => {
+      const card = hand.play(0)
+      expect(hand.discardPile().top()).toEqual(card)
+    })
+    it("moves the action to the next hand", () => {
+      expect(hand.playerInTurn()).toEqual(0)
+      hand.play(0)
+      expect(hand.playerInTurn()).toEqual(1)
+    })
+    it("changes color to the played color", () => {
+      const shuffler = (shuffleBuilder()
+        .discard()
+          .is({ type: 'NUMBERED', color: 'BLUE', number: 6 })
+        .hand(0)
+          .is({ type: 'NUMBERED', color: 'RED', number: 6 })
+        .hand(1)
+          .is({ color: 'RED' }))
+        .build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.play(0)
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+  })
+
+  describe("Playing a skip card", () => {
+    it("skips the next player", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE', number: 6})
+        .hand(0)
+          .is({type: 'SKIP', color: 'BLUE'})
+        .build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.playerInTurn()).toEqual(0)
+      hand.play(0)
+      expect(hand.playerInTurn()).toEqual(2)
+    })
+  })
+
+  describe("Playing a reverse card", () => {
+    let builder = shuffleBuilder()
+    beforeEach(() => {
+      builder = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE', number: 6})
+        .hand(0)
+          .is({type: 'REVERSE', color: 'BLUE'})
+    })
+    it("reverses the direction of play", () => {
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler: builder.build()})
+      expect(hand.playerInTurn()).toEqual(0)
+      hand.play(0)
+      expect(hand.playerInTurn()).toEqual(3)
+    })
+    it("makes the reversing persistent", () => {
+      builder.hand(3).is({type: 'NUMBERED', color: 'BLUE'})
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler: builder.build()})
+      expect(hand.playerInTurn()).toEqual(0)
+      hand.play(0)
+      hand.play(0)
+      expect(hand.playerInTurn()).toEqual(2)
+    })
+    it("reverses the reversing", () => {
+      builder
+        .hand(3)
+          .is({type: 'NUMBERED', color: 'BLUE'})
+        .hand(2)
+          .is({type: 'REVERSE', color: 'BLUE'})
+        const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler: builder.build()})
+        expect(hand.playerInTurn()).toEqual(0)
+      hand.play(0)
+      hand.play(0)
+      hand.play(0)
+      expect(hand.playerInTurn()).toEqual(3)
+    })
+  })
+
+  describe("Playing a draw card", () => {
+    let hand: Hand = undefined as any
+    beforeEach(() => {
+      const builder = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE', number: 6})
+        .hand(0)
+          .is({type: 'DRAW', color: 'BLUE'})
+      hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler: builder.build()})
+    })
+    it("skips the next player", () => {
+      expect(hand.playerInTurn()).toEqual(0)
+      hand.play(0)
+      expect(hand.playerInTurn()).toEqual(2)
+    })
+    it("gives the next player 2 cards", () => {
+      hand.play(0)
+      expect(hand.playerHand(1).length).toEqual(9)
+    })
+    it("takes the 2 cards from the draw pile", () => {
+      const pileSize = hand.drawPile().size
+      hand.play(0)
+      expect(hand.drawPile().size).toEqual(pileSize - 2)
+    })
+  })
+
+  describe("Playing a wild card", () => {
+    let builder = shuffleBuilder()
+    beforeEach(() => {
+      builder = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE', number: 6})
+        .hand(0)
+          .is({type: 'WILD'})
+    })
+    it("moves the action to the next hand", () => {
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler: builder.build()})
+      expect(hand.playerInTurn()).toEqual(0)
+      hand.play(0, 'RED')
+      expect(hand.playerInTurn()).toEqual(1)
+    })
+    it("changes color to the chosen color", () => {
+      builder.hand(1).is({color: 'RED'})
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler: builder.build()})
+      hand.play(0, 'RED')
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+  })
+
+  describe("Playing a wild draw card", () => {
+    let builder = shuffleBuilder()
+    beforeEach(() => {
+      builder = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE', number: 6})
+        .hand(0)
+          .is({type: 'WILD DRAW'})
+        .repeat(6).isnt({color: 'BLUE'})
+    })
+    it("skips the next player", () => {
+      const shuffler = builder.build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.playerInTurn()).toEqual(0)
+      hand.play(0, 'RED')
+      expect(hand.playerInTurn()).toEqual(2)
+    })
+    it("gives the next player 4 cards", () => {
+      const shuffler = builder.build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.play(0, 'RED')
+      expect(hand.playerHand(1).length).toEqual(11)
+    })
+    it("takes the 4 cards from the draw pile", () => {
+      const shuffler = builder.build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      const pileSize = hand.drawPile().size
+      hand.play(0, 'RED')
+      expect(hand.drawPile().size).toEqual(pileSize - 4)
+    })
+    it("changes color to the chosen color", () => {
+      builder.hand(2).is({color: 'RED'})
+      const shuffler = builder.build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.play(0, 'RED')
+      expect(hand.canPlay(0)).toBeTruthy()
+    })
+  })
+
+  describe("Boundaries", () => {
+    it("is illegal to play a non-existant card", () => {
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3}) 
+      expect(() => hand.play(-1)).toThrow()
+      expect(() => hand.play(7)).toThrow()
+    })
+    it("is illegal to name a color on a colored card", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE'})
+        .hand(0)
+          .is({color: 'BLUE'})
+        .build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(() => hand.play(0, "YELLOW")).toThrow()
+    })
+    it("is illegal _not_ to name a color on a wild card", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE'})
+        .hand(0)
+          .is({type: 'WILD'})
+        .build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(() => hand.play(0)).toThrow()
+    })
+    it("is illegal _not_ to name a color on a wild draw card", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE'})
+        .hand(0)
+          .is({type: 'WILD DRAW'})
+          .repeat(6).isnt({color: 'BLUE'})
+        .build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(() => hand.play(0)).toThrow()
+    })
+  })
+})
+
+describe("Drawing a card", () => {
+  describe("can play any", () => {
+    it("returns true if the player has a playable card", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE'})
+        .hand(0)
+          .is({color: 'BLUE'})
+        .build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlayAny()).toBeTruthy()
+    })
+    it("returns false if the player has a playable card", () => {
+      const shuffler = shuffleBuilder()
+        .discard()
+          .is({type: 'NUMBERED', color: 'BLUE', number: 0})
+        .hand(0)
+          .is({type: 'NUMBERED', color: 'RED', number: 1})
+          .is({type: 'NUMBERED', color: 'YELLOW', number: 2})
+          .is({type: 'NUMBERED', color: 'RED', number: 3})
+          .is({type: 'NUMBERED', color: 'GREEN', number: 4})
+          .is({type: 'SKIP', color: 'RED'})
+          .is({type: 'REVERSE', color: 'GREEN'})
+          .is({type: 'DRAW', color: 'YELLOW'})
+        .build()
+      const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      expect(hand.canPlayAny()).toBeFalsy()
+    })
+  })
+
+  describe("draw", () => {
+    let builder = shuffleBuilder()
+    beforeEach(() => {
+      builder = shuffleBuilder()
+      .discard()
+        .is({type: 'NUMBERED', color: 'BLUE', number: 0})
+      .hand(0)
+        .is({type: 'NUMBERED', color: 'RED', number: 1})
+        .is({type: 'NUMBERED', color: 'YELLOW', number: 2})
+        .is({type: 'NUMBERED', color: 'RED', number: 3})
+        .is({type: 'NUMBERED', color: 'GREEN', number: 4})
+        .is({type: 'SKIP', color: 'RED'})
+        .is({type: 'REVERSE', color: 'GREEN'})
+        .is({type: 'DRAW', color: 'YELLOW'})    
+    })
+    it("adds the drawn card to the hand", () => {
+      const shuffler = builder.build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.draw()
+      expect(hand.playerHand(0).length).toEqual(8)
+    })
+    it("adds the top of the draw pile to the end of the hand", () => {
+      const shuffler = builder
+        .drawPile().is({type: 'DRAW', color: 'GREEN'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.draw()
+      expect(
+        is({type: 'DRAW', color: 'GREEN'})(hand.playerHand(0).at(7))
+      ).toBeTruthy()
+    })
+    it("moves to the next player if the card is unplayable", () => {
+      const shuffler = builder
+        .drawPile().is({type: 'DRAW', color: 'GREEN'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.draw()
+      expect(hand.playerInTurn()).toBe(1)
+    })
+    it("doesn't move to the next player if the card is unplayable", () => {
+      const shuffler = builder
+        .drawPile().is({type: 'DRAW', color: 'BLUE'})
+        .build()
+      const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
+      hand.draw()
+      expect(hand.playerInTurn()).toBe(0)
+    })
+  })
+
+  describe("drawing the last card", () => {
+    describe("succesive play", () => {
+      const builder = shuffleBuilder({players: 4, cardsPerPlayer: 1})
+        .discard().is({type: 'NUMBERED', color: 'BLUE', number: 8})
+        .drawPile()
+          .is({type: 'SKIP', color: 'BLUE'})
+          .is({type: 'NUMBERED', color: 'YELLOW', number: 3})
+        .hand(0).is({type: 'NUMBERED', color: 'GREEN', number: 4})
+        .hand(1).is({type: 'WILD'})
+        .hand(2).is({type: 'NUMBERED', color: 'GREEN', number: 8})
+        .hand(3).is({type: 'NUMBERED', color: 'GREEN', number: 0})
+      let mockShuffler = jest.fn()
+      let hand: Hand = undefined as any
+      beforeEach(() => {
+        // Leave the deck with only the above 7 cards:
+        const shortener = shorteningShuffler(7, builder.build()) 
+        mockShuffler = jest.fn()
+        const shuffler = successiveShufflers(shortener, mockShuffler)
+        hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 1})
+      })
+      it("begins with player 0 drawing a playable card", () => {
+        hand.draw()
+        expect(hand.playerHand(0).length).toEqual(2)
+        expect(hand.playerInTurn()).toEqual(0)
+      })
+      it("proceeds with player 0 playing the drawn card, skipping player 1", () => {
+        hand.draw()
+        hand.play(1)
+        expect(hand.playerHand(0).length).toEqual(1)
+        expect(hand.playerInTurn()).toEqual(2)
+      })
+      it("proceeds with player drawing an unplayable card", () => {
+        hand.draw()
+        hand.play(1)
+        hand.draw()
+        expect(hand.playerHand(2).length).toEqual(2)
+        expect(hand.playerInTurn()).toEqual(3)
+      })
+      it("proceeds with shuffling to create a new draw pile", () => {
+        hand.draw()
+        hand.play(1)
+        hand.draw()
+        expect(mockShuffler).toHaveBeenCalled() // TODO: Times 1
+      })
+      it("retains the top card of the discard pile", () => {
+        hand.draw()
+        hand.play(1)
+        const top = hand.discardPile().top()
+        hand.draw()
+        expect(hand.discardPile().top()).toEqual(top)
+      })
+      it("leaves only the top card in the discard pile", () => {
+        hand.draw()
+        hand.play(1)
+        hand.draw()
+        expect(hand.discardPile().size).toEqual(1)
+      })
+      it("adds cards in the draw pile", () => {
+        hand.draw()
+        hand.play(1)
+        hand.draw()
+        expect(hand.drawPile().size).toEqual(1)
+      })
+      it("leaves the cards removed from the discard pile in the draw pile", () => {
+        const card = hand.discardPile().top()
+        hand.draw()
+        hand.play(1)
+        hand.draw()
+        hand.draw()
+        expect(hand.playerHand(3).at(1)).toEqual(card)
+      })
+    })
+  })
+
+  describe("when drawing because of a card", () => {
+    const builder = shuffleBuilder({players: 4, cardsPerPlayer: 1})
+      .discard().is({type: 'NUMBERED', color: 'BLUE', number: 8})
+      .drawPile()
+        .is({type: 'NUMBERED', color: 'BLUE'})
+        .is({type: 'DRAW', color: 'BLUE'})
+      .hand(0).is({type: 'SKIP', color: 'GREEN'})
+      .hand(1).is({type: 'REVERSE', color: 'YELLOW'})
+    const shortener = shorteningShuffler(8, builder.build()) 
+    const mockShuffler = jest.fn()
+    const shuffler = successiveShufflers(shortener, mockShuffler)
+    const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler, cardsPerPlayer: 1})
+    hand.draw()
+    hand.play(1)
+    hand.draw()
+    expect(hand.playerInTurn()).toBe(1)
+    expect(hand.playerHand(1).at(1)?.type).toEqual('DRAW')
+    expect(hand.drawPile().size).toEqual(1)
+    hand.play(1)
+    expect(hand.playerHand(2).length).toEqual(3)
+    expect(hand.discardPile().size).toEqual(1)
+    expect(hand.drawPile().size).toEqual(1)
+  })
+})
+
+describe("special 2-player rules", () => {
+  test("playing a reverse card works as a skip card", () => {
+    const shuffler = shuffleBuilder({players: 2, cardsPerPlayer: 7})
+      .discard().is({type:'NUMBERED', color: 'BLUE'})
+      .hand(0).is({type: 'REVERSE', color: 'BLUE'})
+      .build()
+    const hand = createHand({players: ['a', 'b'], dealer: 1, shuffler})
+    expect(hand.playerInTurn()).toEqual(0)
+    hand.play(0)
+    expect(hand.playerInTurn()).toEqual(0)
+  })
+})
+
+
+// file: __test__\model\hand.start.test.ts
+import { describe, it, expect, beforeEach, jest } from '@jest/globals'
+import { createHand } from '../utils/test_adapter'
+import { Card } from '../../src/model/deck'
+import { Hand } from '../../src/model/hand'
+import { createHandWithShuffledCards, shuffleBuilder, successiveShufflers } from '../utils/shuffling'
+
+const normalShuffle = shuffleBuilder()
+.discard()
+.isnt({type: ['DRAW', 'REVERSE', 'SKIP', 'WILD', 'WILD DRAW']})
+.build()
+
+describe("Hand set up", () => {
+  const dealtCardsCount = 4 * 7
+  let hand: Hand = undefined as any
+  let cards: Readonly<Card[]> = []
+  beforeEach(() => {
+    [hand, cards] = createHandWithShuffledCards({shuffler: normalShuffle})
+  })
+  it("has as many players as set in the properties", () => {
+    expect(hand.playerCount).toBe(4)
+  })
+  it("has the players set in the properties", () => {
+    expect(hand.player(0)).toBe('a')
+    expect(hand.player(1)).toBe('b')
+    expect(hand.player(2)).toBe('c')
+    expect(hand.player(3)).toBe('d')
+  })
+  it("requires at least 2 players", () => {
+    expect(() => createHand({players: ['a'], dealer: 1})).toThrow()
+  })
+  it("allows at most 10 players", () => {
+    expect(() => createHand({players: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'], dealer: 1})).toThrow()
+  })
+  it("requires player index to be in bounds", () => {
+    expect(() => hand.player(-1)).toThrow()
+    expect(() => hand.player(4)).toThrow()
+  })
+  it("selects dealer set in the properties", () => {
+    expect(hand.dealer).toBe(1)
+  })
+  it("shuffles the deck", () => {
+    const mockShuffler = jest.fn()
+    createHand({players: ['a', 'b', 'c', 'd'], dealer: 1, shuffler: mockShuffler})
+    expect(mockShuffler).toBeCalledTimes(1)
+  })
+  it("deals 7 cards to each player", () => {
+    expect(hand.playerHand(0).length).toBe(7)
+    expect(hand.playerHand(1).length).toBe(7)
+    expect(hand.playerHand(2).length).toBe(7)
+    expect(hand.playerHand(3).length).toBe(7)
+  })
+  it("deals 7 cards to each player from the top of the deck", () => {
+    [hand, cards] = createHandWithShuffledCards({dealer: 3, shuffler: normalShuffle})
+    for(let playerIndex = 0; playerIndex < hand.playerCount; playerIndex++) {
+      hand.playerHand(playerIndex).forEach((card, index) => expect(card).toEqual(cards[7 * playerIndex + index]))
+    }
+  })
+  it("returns consistent hands", () => {
+    expect(hand.playerHand(0)).toBe(hand.playerHand(0))
+  })
+  it("creates a discard pile with the top card", () => {
+    const undealtCards = cards.slice(dealtCardsCount)  
+    expect(hand.discardPile().size).toEqual(1)
+    expect(hand.discardPile().top()).toEqual(undealtCards[0])  
+  })
+  it("keeps the undealt cards in the draw pile", () => {
+    const undealtCards = cards.slice(dealtCardsCount)    
+    for(let i = 1; i < undealtCards.length; i++) {
+      expect(hand.drawPile().deal()).toEqual(undealtCards[i])
+    }
+  })
+  it("reshuffles if the top of the discard pile is a wild card", () => {
+    const wildOnDiscardTop = shuffleBuilder().discard().is({type: 'WILD'}).build()
+    const wildNotOnTop = shuffleBuilder().top().isnt({type: ['WILD', 'WILD DRAW']}).build()
+    const mockShuffler = jest.fn(wildNotOnTop)
+    const shuffler = successiveShufflers(wildOnDiscardTop, mockShuffler)
+    createHand({players: ['a', 'b', 'c', 'd'], dealer: 1, shuffler})
+    expect(mockShuffler).toBeCalledTimes(1)
+  })
+  it("keeps shuffling as long as the top of the discard pile is a wild card", () => {
+    const wildOnDiscardTop = shuffleBuilder().discard().is({type: 'WILD'}).build()
+    const wildOnTop = shuffleBuilder().top().is({type: 'WILD'}).build()
+    const wildNotOnTop = shuffleBuilder().top().isnt({type: ['WILD', 'WILD DRAW']}).build()
+    const mockShuffler = jest.fn(wildNotOnTop)
+    const shuffler = successiveShufflers(wildOnDiscardTop, wildOnTop, mockShuffler)
+    createHand({players: ['a', 'b', 'c', 'd'], dealer: 1, shuffler})
+    expect(mockShuffler).toBeCalledTimes(1)
+  })
+  it("reshuffles if the top of the discard pile is a wild draw 4 card", () => {
+    const wildDrawOnDiscardTop = shuffleBuilder().discard().is({type: 'WILD DRAW'}).build()
+    const wildNotOnTop = shuffleBuilder().top().isnt({type: ['WILD', 'WILD DRAW']}).build()
+    const mockShuffler = jest.fn(wildNotOnTop)
+    const shuffler = successiveShufflers(wildDrawOnDiscardTop, mockShuffler)
+    createHand({players: ['a', 'b', 'c', 'd'], dealer: 1, shuffler})
+    expect(mockShuffler).toBeCalledTimes(1)
+  })
+})
+
+describe("Before first action in hand", () => {
+  it("begins with the player to the left of the dealer unless the top card is draw, reverse or skip", () => {
+    const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 1, shuffler: normalShuffle})
+    expect(hand.playerInTurn()).toBe(2)
+  })
+  it("rolls over if the dealer is the last player", () => {
+    const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler: normalShuffle})
+    expect(hand.playerInTurn()).toBe(0)
+  })
+  it("begins with the player to the right of the dealer if the top card is reverse", () => {
+    const shuffler = shuffleBuilder().discard().is({type: 'REVERSE'}).build()
+    const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 1, shuffler})
+    expect(hand.playerInTurn()).toBe(0)
+  })
+  it("rolls over if dealer is the first player and the top card is reverse", () => {
+    const shuffler = shuffleBuilder().discard().is({type: 'REVERSE'}).build()
+    const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 0, shuffler})
+    expect(hand.playerInTurn()).toBe(3)
+  })
+  it("begins with the player two places to the left of the dealer if the top card is skip", () => {
+    const shuffler = shuffleBuilder().discard().is({type: 'SKIP'}).build()
+    const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 1, shuffler})
+    expect(hand.playerInTurn()).toBe(3)
+  })
+  it("adds 2 cards to the hand of the first player if the top card is draw", () => {
+    const shuffler = shuffleBuilder().discard().is({type: 'DRAW'}).build()
+    const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 1, shuffler})
+    expect(hand.playerHand(2).length).toBe(9)
+  })
+})
+
+
+// file: __test__\model\uno.test.ts
+import { describe, it, test, expect } from '@jest/globals'
+import { createGame } from '../utils/test_adapter'
+import { shuffleBuilder, successiveShufflers } from '../utils/shuffling'
+import { Game } from '../../src/model/uno'
+
+describe("Game set up", () => {
+  const game: Game = createGame({players: ['a', 'b', 'c', 'd'], targetScore: 500})
+  it("has as many players as set in the properties", () => {
+    expect(game.playerCount).toBe(4)
+  })
+  it("has the players set in the properties", () => {
+    expect(game.player(0)).toBe('a')
+    expect(game.player(1)).toBe('b')
+    expect(game.player(2)).toBe('c')
+    expect(game.player(3)).toBe('d')
+  })
+  it("has 'A' and 'B' as the default players", () => {
+    const game: Game = createGame({targetScore: 500})
+    expect(game.playerCount).toBe(2)
+    expect(game.player(0)).toBe('A')
+    expect(game.player(1)).toBe('B')
+  })
+  it("has the target score set in the properties", () => {
+    expect(game.targetScore).toBe(500)
+  })
+  it("has 500 as the default target score", () => {
+    const game: Game = createGame({players: ['a', 'b', 'c', 'd']})
+    expect(game.targetScore).toBe(500)
+  })
+  it("starts with all players at 0 score", () => {
+    expect(game.score(0)).toBe(0)
+    expect(game.score(1)).toBe(0)
+    expect(game.score(2)).toBe(0)
+    expect(game.score(3)).toBe(0)
+  })
+  it("has no winner", () => {
+    expect(game.winner()).toBeUndefined();
+  })
+  it("requires at least 2 players", () => {
+    expect(() => createGame({players: ['a'], targetScore: 500})).toThrow()
+  })
+  it("requires a target score of more than 0", () => {
+    expect(() => createGame({players: ['a', 'b', 'c', 'd'], targetScore: 0})).toThrow()
+  })
+  it("requires player index to be in bounds", () => {
+    expect(() => game.player(-1)).toThrow()
+    expect(() => game.player(4)).toThrow()
+  })
+  it("starts a hand", () => {
+    expect(game.currentHand()).toBeDefined()
+  })
+  it("doesn't start a new hand if no action is taken", () => {
+    const hand = game.currentHand()
+    expect(game.currentHand()).toBe(hand)
+  })
+  it("selects a random player as dealer", () => {
+    const game: Game = createGame({players: ['a', 'b', 'c', 'd'], targetScore: 500, randomizer: () => 1})
+    expect(game.currentHand()?.dealer).toBe(1)
+  })
+})
+
+const firstShuffle = shuffleBuilder({ players: 4, cardsPerPlayer: 1 })
+  .discard().is({ type: 'NUMBERED', color: 'BLUE', number: 8 })
+  .hand(0).is({ color: 'GREEN', type: 'DRAW' })
+  .hand(1).is({ number: 8 })
+  .hand(2).is({ type: 'WILD DRAW' })
+  .hand(3).is({ number: 3 })
+  .drawPile().is({ color: 'GREEN', number: 5 })
+  .build()
+
+describe("Playing a hand", () => {
+  const props = {
+    players: ['a', 'b', 'c', 'd'],
+    targetScore: 200,
+    randomizer: () => 3,
+    shuffler: firstShuffle,
+    cardsPerPlayer: 1
+  }
+  describe("while the hand is still running", () => {
+    const game = createGame(props)
+    const hand = game.currentHand()!
+    hand.draw()
+    test("no winner has been found", () => {
+      expect(game.winner()).toBeUndefined()
+    })
+    test("the score is unchanged", () => {
+      expect(game.score(0)).toBe(0)
+      expect(game.score(1)).toBe(0)
+      expect(game.score(2)).toBe(0)
+      expect(game.score(3)).toBe(0)
+    })
+    test("the hand is the same", () => {
+      expect(game.currentHand()).toBe(hand)
+    })
+  })
+  describe("when the hand is over", () => {
+    const game = createGame(props)
+    const hand = game.currentHand()!
+    hand.draw()
+    hand.play(0)
+    test("the setup is as expected", () => {
+      expect(hand.hasEnded()).toBeTruthy()
+      expect(hand.winner()).toEqual(1)
+      expect(hand.score()).toEqual(78)
+    })
+    test("the game still has no winner", () => {
+      expect(game.winner()).toBeUndefined()
+    })
+    test("the score is updated", () => {
+      expect(game.score(0)).toBe(0)
+      expect(game.score(1)).toBe(78)
+      expect(game.score(2)).toBe(0)
+      expect(game.score(3)).toBe(0)
+    })
+    test("a new hand is started", () => {
+      expect(game.currentHand()).not.toBe(hand)
+    })
+  })
+})
+
+const secondShuffle = shuffleBuilder({ players: 4, cardsPerPlayer: 1 })
+  .discard().is({ type: 'NUMBERED', color: 'BLUE', number: 8 })
+  .hand(0).is({ number: 8 })
+  .hand(1).is({ color: 'GREEN', type: 'DRAW' })
+  .hand(2).is({ type: 'WILD DRAW' })
+  .hand(3).is({ number: 3 })
+  .build()
+
+describe("ending the second hand", () => {
+  const props = {
+    players: ['a', 'b', 'c', 'd'],
+    targetScore: 200,
+    randomizer: () => 3,
+    shuffler: successiveShufflers(firstShuffle, secondShuffle),
+    cardsPerPlayer: 1
+  }
+  const game = createGame(props)
+  const hand1 = game.currentHand()!
+  hand1.draw()
+  hand1.play(0)
+  const hand2 = game.currentHand()!
+  hand2.play(0)
+
+  test("set up is as expected", () => {
+    expect(hand2).not.toBe(hand1)
+    expect(hand2.hasEnded()).toBeTruthy()
+    expect(hand2.winner()).toBe(0)
+    expect(hand2.score()).toBe(73)
+  })
+  test("the game still has no winner", () => {
+    expect(game.winner()).toBeUndefined()
+  })
+  test("the score is updated", () => {
+    expect(game.score(0)).toBe(73)
+    expect(game.score(1)).toBe(78)
+    expect(game.score(2)).toBe(0)
+    expect(game.score(3)).toBe(0)
+  })
+  test("a new hand is started", () => {
+    expect(game.currentHand()).not.toBe(hand1)
+    expect(game.currentHand()).not.toBe(hand2)
+  })
+})
+
+const thirdShuffle = shuffleBuilder({ players: 4, cardsPerPlayer: 1 })
+  .discard().is({ type: 'NUMBERED', color: 'BLUE', number: 8 })
+  .hand(0).is({ color: 'BLUE', type: 'DRAW' })
+  .hand(1).is({ type: 'WILD DRAW' })
+  .hand(2).is({ type: 'SKIP', color: 'GREEN' })
+  .hand(3).is({ number: 3 })
+  .drawPile().is({ type: 'WILD' }, { type: 'REVERSE' })
+  .build()
+
+describe("ending the second hand", () => {
+  const props = {
+    players: ['a', 'b', 'c', 'd'],
+    targetScore: 200,
+    randomizer: () => 3,
+    shuffler: successiveShufflers(firstShuffle, secondShuffle, thirdShuffle),
+    cardsPerPlayer: 1
+  }
+  const game = createGame(props)
+  const hand1 = game.currentHand()!
+  hand1.draw()
+  hand1.play(0)
+  const hand2 = game.currentHand()!
+  hand2.play(0)
+  const hand3 = game.currentHand()!
+  hand3.play(0)
+
+  test("set up is as expected", () => {
+    expect(hand3).not.toBe(hand1)
+    expect(hand3).not.toBe(hand2)
+    expect(hand3.hasEnded()).toBeTruthy()
+    expect(hand3.winner()).toBe(0)
+    expect(hand3.score()).toBe(143)
+  })
+  test("player 0 won", () => {
+    expect(game.winner()).toEqual(0)
+  })
+  test("the score is updated", () => {
+    expect(game.score(0)).toBe(216)
+    expect(game.score(1)).toBe(78)
+    expect(game.score(2)).toBe(0)
+    expect(game.score(3)).toBe(0)
+  })
+  test("a new hand is not started", () => {
+    expect(game.currentHand()).toBeUndefined()
+  })
+})
+

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals'
-import { createHand} from '../utils/test_adapter'
+import { createHand } from '../utils/test_adapter'
 import { Card } from '../../src/model/deck'
 import { Hand } from '../../src/model/hand'
 import { createHandWithShuffledCards, shuffleBuilder, successiveShufflers } from '../utils/shuffling'
