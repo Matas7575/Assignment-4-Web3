@@ -10,10 +10,12 @@ export interface Card {
   number?: number;
 }
 
-export type Deck = Card[];
+export interface Deck extends Array<Card> {
+  size: number;
+}
 
 export function createInitialDeck(): Deck {
-  const deck: Deck = [];
+  const deck: Card[] = [];
 
   // Add numbered cards
   for (const color of colors) {
@@ -39,32 +41,41 @@ export function createInitialDeck(): Deck {
     deck.push({ type: 'WILD DRAW' });
   }
 
-  return deck;
+  return toDeck(deck);
 }
 
-export function shuffleDeck(deck: Deck, shuffler: Shuffler<Card> = standardShuffler): Deck {
+export function shuffleDeck(deck: Deck | Card[], shuffler: Shuffler<Card> = standardShuffler): Deck {
   const shuffledDeck = [...deck];
   shuffler(shuffledDeck);
-  return shuffledDeck;
+  return toDeck(shuffledDeck);
 }
 
 export function dealCard(deck: Deck): [Card | undefined, Deck] {
+  if (deck.length === 0) return [undefined, deck];
   const [firstCard, ...restOfDeck] = deck;
-  return [firstCard, restOfDeck];
+  return [firstCard, toDeck(restOfDeck)];
 }
 
 export function addToBottom(deck: Deck, card: Card): Deck {
-  return [...deck, card];
+  return toDeck([...deck, card]);
 }
 
 export function getDeckSize(deck: Deck): number {
-  return deck.length;
-}
-
-export function filterDeck(deck: Deck, predicate: (card: Card) => boolean): Deck {
-  return deck.filter(predicate);
+  return deck.size;
 }
 
 export function topCard(deck: Deck): Card | undefined {
   return deck[deck.length - 1];
+}
+
+export function filterDeck(deck: Deck, predicate: (card: Card) => boolean): Deck {
+  return toDeck(deck.filter(predicate));
+}
+
+export function toDeck(cards: Card[]): Deck {
+  return Object.defineProperty([...cards], 'size', {
+    get: function() { return this.length; },
+    enumerable: true,
+    configurable: true
+  }) as Deck;
 }

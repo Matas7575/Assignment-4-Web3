@@ -34,5 +34,12 @@ export function createHand({
 }
 
 export function createGame(props: Partial<uno.Game>): uno.Game {
-  return uno.createGame(props);
+  const gameState = uno.createGame(props);
+  return {
+    ...gameState,
+    playerCount: gameState.playerCount || 0,
+    player: gameState.player || [],
+    score: gameState.score || 0,
+    winner: gameState.winner || null,
+  };
 }

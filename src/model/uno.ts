@@ -1,4 +1,4 @@
-import { HandState, createHand, score as handScore } from './hand';
+import { HandState, createHand, score as handScore } from './handState';
 import { Card, Color } from './deck';
 import { Randomizer, standardRandomizer, Shuffler, standardShuffler } from '../utils/random_utils';
 
