@@ -82,7 +82,7 @@ describe("Playing a card", () => {
       let hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler: builder.build()})
       expect(hand.playerInTurn).toEqual(0)
       hand = play(0, undefined, hand)
-      expect(hand.playerInTurn).toEqual(3)
+      expect(hand.playerInTurn). toEqual(3)
     })
     it("makes the reversing persistent", () => {
       builder.hand(3).is({type: 'NUMBERED', color: 'BLUE'})

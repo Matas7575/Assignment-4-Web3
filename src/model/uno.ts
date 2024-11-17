@@ -1,77 +1,79 @@
-import { dealCards } from "./hand";
-import { Card, Deck, shuffle as shuffleDeck, createInitialDeck, deal } from "./deck";
-import {
-  Randomizer,
-  standardRandomizer,
-  Shuffler,
-  standardShuffler,
-} from "../utils/random_utils";
+import type { Card, Color } from "./deck";
+import type { Hand } from "./hand";
+import { createHand, score as handScore } from "./hand";
+import type { Randomizer, Shuffler } from "../utils/random_utils";
+import { standardRandomizer, standardShuffler } from "../utils/random_utils";
 
-interface GameState {
-  hands: Card[][];
-  deck: Deck;
-  discardPile: Card[];
-  currentPlayer: number;
-  direction: 1 | -1; // 1 for clockwise, -1 for counterclockwise
-  currentColor?: string; // Optional property for wild card color
+export interface Props {
+  players?: string[];
+  targetScore?: number;
+  randomizer?: Randomizer;
+  shuffler?: Shuffler<Card>;
+  cardsPerPlayer?: number;
 }
 
-const initializeGame = (playerCount: number): GameState => {
-  if (playerCount < 2 || playerCount > 10) {
-    throw new Error("Player count must be between 2 and 10");
+export interface Game {
+  playerCount: number;
+  players: string[];
+  scores: number[];
+  targetScore: number;
+  currentHand?: Hand;
+  winner?: number;
+}
+
+export function createGame({
+  players = ["A", "B"],
+  targetScore = 500,
+  randomizer = standardRandomizer,
+  shuffler = standardShuffler,
+  cardsPerPlayer = 7
+}: Props = {}): Game {
+  if (players.length < 2) {
+    throw new Error("At least 2 players required");
+  }
+  if (targetScore <= 0) {
+    throw new Error("Target score must be positive");
   }
 
-  const deck = shuffleDeck(createInitialDeck());
-  const [hands, remainingDeck] = dealCards(deck, playerCount);
-  const [discardPile, newDeck] = deal(remainingDeck, 1);
-
+  const dealer = randomizer(players.length);
+  
   return {
-    hands,
-    deck: newDeck,
-    discardPile,
-    currentPlayer: 0,
-    direction: 1,
+    playerCount: players.length,
+    players,
+    scores: new Array(players.length).fill(0),
+    targetScore,
+    currentHand: createHand(players, dealer, shuffler, cardsPerPlayer)
   };
-};
+}
 
-const play = (
-  cardIndex: number,
-  chosenColor: string | undefined,
-  state: GameState
-): GameState => {
-  const currentHand = state.hands[state.currentPlayer];
-  const card = currentHand[cardIndex];
-
-  if (!card) throw new Error("Illegal play: card does not exist");
-
-  if ((card.type === "WILD" || card.type === "WILD DRAW") && !chosenColor) {
-    throw new Error("Illegal play: wild cards require a color choice");
+export function play(action: (h: Hand) => Hand, game: Game): Game {
+  if (!game.currentHand) {
+    throw new Error("Game is over");
   }
 
-  // Remove the played card and update the player's hand
-  const updatedHands = state.hands.map((hand, index) =>
-    index === state.currentPlayer
-      ? hand.filter((_, idx) => idx !== cardIndex)
-      : hand
-  );
+  const hand = action(game.currentHand);
+  const score = handScore(hand);
 
-  // Add the card to the discard pile
-  const updatedDiscardPile = [...state.discardPile, card];
+  if (score === undefined) {
+    return {
+      ...game,
+      currentHand: hand
+    };
+  }
 
-  // Determine the next player
-  const nextPlayer =
-    (state.currentPlayer + state.direction + state.hands.length) %
-    state.hands.length;
+  const newScores = [...game.scores];
+  const winner = hand.hands.findIndex((h: Card[]) => h.length === 0);
+  if (winner !== -1) {
+    newScores[winner] += score;
+  }
+
+  const gameWinner = newScores.findIndex(s => s >= game.targetScore);
+  const nextDealer = (hand.dealer + 1) % game.playerCount;
 
   return {
-    ...state,
-    hands: updatedHands,
-    discardPile: updatedDiscardPile,
-    currentPlayer: nextPlayer,
-    direction: state.direction,
-    currentColor: chosenColor || card.color,
+    ...game,
+    scores: newScores,
+    currentHand: gameWinner === -1 ? createHand(game.players, nextDealer) : undefined,
+    winner: gameWinner === -1 ? undefined : gameWinner
   };
-};
-
-// Consolidated Export
-export { initializeGame, play, GameState };
+}
