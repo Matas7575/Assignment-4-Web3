@@ -1,5 +1,5 @@
 import { dealCards } from "./hand";
-import { Card, Deck, shuffle as shuffleDeck, createDeck, deal } from "./deck";
+import { Card, Deck, shuffle as shuffleDeck, createInitialDeck, deal } from "./deck";
 import {
   Randomizer,
   standardRandomizer,
@@ -21,7 +21,7 @@ const initializeGame = (playerCount: number): GameState => {
     throw new Error("Player count must be between 2 and 10");
   }
 
-  const deck = shuffleDeck(createDeck());
+  const deck = shuffleDeck(createInitialDeck());
   const [hands, remainingDeck] = dealCards(deck, playerCount);
   const [discardPile, newDeck] = deal(remainingDeck, 1);
 

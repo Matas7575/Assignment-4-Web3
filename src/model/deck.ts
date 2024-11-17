@@ -1,50 +1,49 @@
 export type Color = "RED" | "YELLOW" | "GREEN" | "BLUE";
-export type Type =
-  | "NUMBERED"
-  | "SKIP"
-  | "REVERSE"
-  | "DRAW"
-  | "WILD"
-  | "WILD DRAW";
+export type Type = "NUMBERED" | "SKIP" | "REVERSE" | "DRAW" | "WILD" | "WILD DRAW";
 
 export interface Card {
   color?: Color;
   type: Type;
-  number?: number; // Only for NUMBERED cards
+  number?: number;
 }
 
 export type Deck = Card[];
 
-const colors: Color[] = ["RED", "YELLOW", "GREEN", "BLUE"];
+export const colors: Color[] = ["RED", "YELLOW", "GREEN", "BLUE"];
 
-const createDeck = (): Deck => {
+export function createInitialDeck(): Deck {
   const deck: Deck = [];
-  const types: Type[] = ["SKIP", "REVERSE", "DRAW"];
-
-  colors.forEach((color) => {
-    for (let i = 0; i <= 9; i++) {
-      deck.push({ color, type: "NUMBERED", number: i });
-      if (i > 0) deck.push({ color, type: "NUMBERED", number: i }); // Duplicate for 2-9
+  
+  // Add numbered cards (19 of each color: one 0, two 1-9)
+  for (const color of colors) {
+    // Add one 0
+    deck.push({ type: "NUMBERED", color, number: 0 });
+    // Add two of each 1-9
+    for (let number = 1; number <= 9; number++) {
+      deck.push({ type: "NUMBERED", color, number });
+      deck.push({ type: "NUMBERED", color, number });
     }
-    types.forEach((type) => {
-      deck.push({ color, type });
-      deck.push({ color, type }); // Each action card has 2 copies
-    });
-  });
+  }
 
+  // Add action cards (2 of each color)
+  for (const color of colors) {
+    for (const type of ["SKIP", "REVERSE", "DRAW"] as Type[]) {
+      deck.push({ type, color });
+      deck.push({ type, color });
+    }
+  }
+
+  // Add wild cards (4 each)
   for (let i = 0; i < 4; i++) {
     deck.push({ type: "WILD" });
     deck.push({ type: "WILD DRAW" });
   }
 
   return deck;
-};
+}
 
-const shuffleDeck = (deck: Deck): Deck => deck.sort(() => Math.random() - 0.5);
-
-const deal = (deck: Deck, count: number): [Card[], Deck] => {
+export function deal(deck: Deck, count: number): [Card[], Deck] {
   return [deck.slice(0, count), deck.slice(count)];
-};
+}
 
-// Consolidated Export
-export { colors, createDeck, shuffleDeck as shuffle, deal };
+export const shuffle = (deck: Deck): Deck => [...deck].sort(() => Math.random() - 0.5);
