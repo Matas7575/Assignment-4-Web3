@@ -6,13 +6,17 @@ import * as R from 'ramda'
 export const deterministicShuffle = (cards: Card[]): Shuffler<Card> => _ => cards
 
 export function successiveShufflers(...shufflers: Shuffler<Card>[]): Shuffler<Card> {
-  shufflers.reverse()
-  let shuffler = shufflers.pop() ?? standardShuffler
+  const reversedShufflers = [...shufflers].reverse();
+  let index = 0;
+
   return (cards: readonly Card[]) => {
-    let shuffled = shuffler(cards)
-    shuffler = shufflers.pop() ?? shuffler
-    return shuffled
-  }  
+    const shuffler = reversedShufflers[index] ?? standardShuffler;
+    const shuffled = shuffler(cards);
+    if (index < reversedShufflers.length - 1) {
+      index++;
+    }
+    return shuffled;
+  };
 }
 
 export const noShuffle: Shuffler<Card> = cs => [...cs]

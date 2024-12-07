@@ -12,6 +12,7 @@ export interface Hand {
   currentColor: Color;
   direction: 1 | -1;
   saidUno: Set<number>;
+  _shuffler: Shuffler<Card>;
 }
 
 export interface UnoAction {
@@ -80,19 +81,51 @@ export function createHand(
     currentColor: discard[0].color!,
     direction,
     saidUno: new Set(),
+    _shuffler: shuffler
   };
 }
 
-export function canPlay(playerIdx: number, hand: Hand): boolean {
+export function canPlay(cardIdx: number, hand: Hand): boolean {
   if (
-    playerIdx < 0 ||
-    playerIdx >= hand.playerCount ||
-    hand.playerInTurn !== playerIdx
+    cardIdx < 0 ||
+    cardIdx >= hand.hands[hand.playerInTurn!]?.length ||
+    hand.playerInTurn === undefined
   ) {
     return false;
   }
 
-  return canPlayAny(hand);
+  const playerHand = hand.hands[hand.playerInTurn];
+  const card = playerHand[cardIdx];
+  const topCard = topOfDiscard(hand);
+
+  // Handle wild cards
+  if (card.type === "WILD") {
+    return true;
+  }
+
+  if (card.type === "WILD DRAW") {
+    return !playerHand.some((c) => c.color === hand.currentColor);
+  }
+
+  // Handle reverse cards - can play if either same color or it's another reverse
+  if (card.type === "REVERSE") {
+    return card.color === hand.currentColor || topCard.type === "REVERSE";
+  }
+
+  // Handle other action cards (SKIP, DRAW)
+  if (card.type === "SKIP" || card.type === "DRAW") {
+    return card.color === hand.currentColor || card.type === topCard.type;
+  }
+
+  // Handle numbered cards
+  if (card.type === "NUMBERED") {
+    return (
+      card.color === hand.currentColor ||
+      (topCard.type === "NUMBERED" && card.number === topCard.number)
+    );
+  }
+
+  return false;
 }
 
 export function canPlayAny(hand: Hand): boolean {
@@ -122,13 +155,13 @@ function canPlayCard(
     return !playerHand.some((c) => c.color === currentColor);
   }
 
+  if (["SKIP", "REVERSE", "DRAW"].includes(card.type)) {
+    return card.color === currentColor || card.type === topCard.type;
+  }
+
   return (
     card.color === currentColor ||
-    (card.type === topCard.type &&
-      ["SKIP", "REVERSE", "DRAW"].includes(card.type)) ||
-    (card.type === "NUMBERED" &&
-      topCard.type === "NUMBERED" &&
-      card.number === topCard.number)
+    (card.type === "NUMBERED" && topCard.type === "NUMBERED" && card.number === topCard.number)
   );
 }
 
@@ -141,110 +174,159 @@ export function play(
     throw new Error("Illegal play");
   }
 
-  const playerHand = hand.hands[hand.playerInTurn!];
+  const currentPlayer = hand.playerInTurn!;
+  const playerHand = hand.hands[currentPlayer];
   const card = playerHand[cardIdx];
 
+  // Validate color choice
   if ((card.type === "WILD" || card.type === "WILD DRAW") && !chosenColor) {
     throw new Error("Must specify color for wild card");
   }
+  if (card.color && chosenColor) {
+    throw new Error("Cannot specify color for colored card");
+  }
 
-  // Remove card from player's hand
+  // Remove played card
   const newHands = hand.hands.map((h, idx) =>
-    idx === hand.playerInTurn ? h.filter((_, i) => i !== cardIdx) : h
+    idx === currentPlayer ? h.filter((_, i) => i !== cardIdx) : h
   );
 
-  // Add card to discard pile
-  const newDiscardPile = [...hand.discardPile, card];
+  // Handle draw pile exhaustion for DRAW effects
+  let newDrawPile = hand.drawPile;
+  let newDiscardPile = [...hand.discardPile, card];
 
-  // Check if game is over
-  if (newHands[hand.playerInTurn!].length === 0) {
+  if ((card.type === "DRAW" && newDrawPile.length < 2) ||
+    (card.type === "WILD DRAW" && newDrawPile.length < 4)) {
+    // Keep the new top card
+    const topCard = card;
+    // Shuffle all the old discard pile
+    const cardsToShuffle = hand.discardPile;
+    newDrawPile = [...newDrawPile, ...hand._shuffler(cardsToShuffle)];
+    newDiscardPile = [topCard];
+  }
+
+  // Handle DRAW and WILD DRAW effects before game end
+  if ((card.type === "DRAW" || card.type === "WILD DRAW") && newHands[currentPlayer].length === 0) {
+    const targetPlayer = (currentPlayer + hand.direction + hand.playerCount) % hand.playerCount;
+    const cardCount = card.type === "DRAW" ? 2 : 4;
+    const drawnCards = newDrawPile.slice(0, cardCount);
+    newHands[targetPlayer] = [...newHands[targetPlayer], ...drawnCards];
+    newDrawPile = newDrawPile.slice(cardCount);
+
     return {
       ...hand,
       hands: newHands,
+      drawPile: newDrawPile,
       discardPile: newDiscardPile,
       playerInTurn: undefined,
       currentColor: chosenColor || card.color || hand.currentColor,
+      _shuffler: hand._shuffler
+    };
+  }
+
+  // Check if game is over
+  if (newHands[currentPlayer].length === 0) {
+    return {
+      ...hand,
+      hands: newHands,
+      drawPile: newDrawPile,
+      discardPile: newDiscardPile,
+      playerInTurn: undefined,
+      currentColor: chosenColor || card.color || hand.currentColor,
+      _shuffler: hand._shuffler
     };
   }
 
   // Handle special cards
-  let direction: 1 | -1 = hand.direction;
-  let nextPlayer =
-    (hand.playerInTurn! + direction + hand.playerCount) % hand.playerCount;
+  let direction = hand.direction;
+  let nextPlayer = currentPlayer;
 
   if (card.type === "REVERSE") {
-    direction = (Math.sign(direction) * -1) as 1 | -1;
+    direction = (direction * -1) as 1 | -1;
     if (hand.playerCount === 2) {
-      nextPlayer = hand.playerInTurn!;
+      nextPlayer = currentPlayer;
+    } else {
+      nextPlayer = (currentPlayer + direction + hand.playerCount) % hand.playerCount;
     }
   } else if (card.type === "SKIP") {
-    nextPlayer =
-      (hand.playerInTurn! + 2 * direction + hand.playerCount) %
-      hand.playerCount;
+    nextPlayer = (currentPlayer + 2 * direction + hand.playerCount) % hand.playerCount;
   } else if (card.type === "DRAW") {
-    const targetPlayer =
-      (hand.playerInTurn! + direction + hand.playerCount) % hand.playerCount;
-    newHands[targetPlayer].push(...hand.drawPile.slice(0, 2));
-    nextPlayer =
-      (hand.playerInTurn! + 2 * direction + hand.playerCount) %
-      hand.playerCount;
-  } else if (card.type === "WILD") {
-    nextPlayer =
-      (hand.playerInTurn! + direction + hand.playerCount) % hand.playerCount;
+    const targetPlayer = (currentPlayer + direction + hand.playerCount) % hand.playerCount;
+    const drawnCards = newDrawPile.slice(0, 2);
+    newHands[targetPlayer] = [...newHands[targetPlayer], ...drawnCards];
+    newDrawPile = newDrawPile.slice(2);
+    nextPlayer = (currentPlayer + 2 * direction + hand.playerCount) % hand.playerCount;
   } else if (card.type === "WILD DRAW") {
-    const targetPlayer =
-      (hand.playerInTurn! + direction + hand.playerCount) % hand.playerCount;
-    newHands[targetPlayer].push(...hand.drawPile.slice(0, 4));
-    nextPlayer =
-      (hand.playerInTurn! + 2 * direction + hand.playerCount) %
-      hand.playerCount;
+    const targetPlayer = (currentPlayer + direction + hand.playerCount) % hand.playerCount;
+    const drawnCards = newDrawPile.slice(0, 4);
+    newHands[targetPlayer] = [...newHands[targetPlayer], ...drawnCards];
+    newDrawPile = newDrawPile.slice(4);
+    nextPlayer = (currentPlayer + 2 * direction + hand.playerCount) % hand.playerCount;
+  } else {
+    nextPlayer = (currentPlayer + direction + hand.playerCount) % hand.playerCount;
   }
 
   return {
     ...hand,
     hands: newHands,
-    drawPile: hand.drawPile.slice(
-      card.type === "DRAW" ? 2 : card.type === "WILD DRAW" ? 4 : 0
-    ),
+    drawPile: newDrawPile,
     discardPile: newDiscardPile,
     playerInTurn: nextPlayer,
     direction,
     currentColor: chosenColor || card.color || hand.currentColor,
+    _shuffler: hand._shuffler
   };
 }
 
 export function draw(hand: Hand): Hand {
-  if (hand.playerInTurn === undefined) throw new Error("Game is over");
+  if (hand.playerInTurn === undefined) {
+    throw new Error("Game is over");
+  }
 
+  const currentPlayer = hand.playerInTurn;
   const drawnCard = hand.drawPile[0];
-  const newHands = hand.hands.map((h, idx) =>
-    idx === hand.playerInTurn ? [...h, drawnCard] : h
-  );
 
-  // If drawn card can be played, keep turn with same player
-  if (
-    canPlayCard(
-      drawnCard,
-      topOfDiscard(hand),
-      newHands[hand.playerInTurn],
-      hand.currentColor
-    )
-  ) {
+  // Add drawn card to player's hand
+  const newHands = [...hand.hands];
+  newHands[currentPlayer] = [...newHands[currentPlayer], drawnCard];
+
+  // Check if this was the last card in draw pile
+  if (hand.drawPile.length === 1) {
+    // Keep top card of discard
+    const topCard = hand.discardPile[hand.discardPile.length - 1];
+
+    // Shuffle rest of discard pile to make new draw pile
+    const cardsToShuffle = hand.discardPile.slice(0, -1);
+    const newDrawPile = hand._shuffler(cardsToShuffle);
+
+    // Check if drawn card can be played
+    const canPlayDrawn = canPlayCard(drawnCard, topOfDiscard(hand), newHands[currentPlayer], hand.currentColor);
+    const nextPlayer = canPlayDrawn
+      ? currentPlayer
+      : (currentPlayer + hand.direction + hand.playerCount) % hand.playerCount;
+
     return {
       ...hand,
       hands: newHands,
-      drawPile: hand.drawPile.slice(1),
+      drawPile: newDrawPile,
+      discardPile: [topCard],
+      playerInTurn: nextPlayer,
+      _shuffler: hand._shuffler
     };
   }
 
-  // Otherwise, move to next player
+  // Normal case - still cards in draw pile
+  const canPlayDrawn = canPlayCard(drawnCard, topOfDiscard(hand), newHands[currentPlayer], hand.currentColor);
+  const nextPlayer = canPlayDrawn
+    ? currentPlayer
+    : (currentPlayer + hand.direction + hand.playerCount) % hand.playerCount;
+
   return {
     ...hand,
     hands: newHands,
     drawPile: hand.drawPile.slice(1),
-    playerInTurn:
-      (hand.playerInTurn + hand.direction + hand.playerCount) %
-      hand.playerCount,
+    playerInTurn: nextPlayer,
+    _shuffler: hand._shuffler
   };
 }
 
@@ -265,21 +347,27 @@ export function score(hand: Hand): number | undefined {
   const winningPlayer = winner(hand);
   if (winningPlayer === undefined) return undefined;
 
+  // Sum all opponent cards
   return hand.hands.reduce((total, playerHand, idx) => {
+    // Skip winner's hand
     if (idx === winningPlayer) return total;
-    return (
-      total +
-      playerHand.reduce((sum, card) => {
-        if (card.type === "WILD" || card.type === "WILD DRAW") return sum + 50;
-        if (
-          card.type === "SKIP" ||
-          card.type === "REVERSE" ||
-          card.type === "DRAW"
-        )
+
+    // Add up cards in this opponent's hand
+    return total + playerHand.reduce((sum, card) => {
+      switch (card.type) {
+        case "WILD":
+        case "WILD DRAW":
+          return sum + 50;
+        case "SKIP":
+        case "REVERSE":
+        case "DRAW":
           return sum + 20;
-        return sum + (card.number || 0);
-      }, 0)
-    );
+        case "NUMBERED":
+          return sum + card.number!;
+        default:
+          return sum;
+      }
+    }, 0);
   }, 0);
 }
 
@@ -307,19 +395,28 @@ export function checkUnoFailure(action: UnoAction, hand: Hand): boolean {
   }
 
   const accusedHand = hand.hands[action.accused];
+  
+  // Must have exactly one card
+  if (accusedHand.length !== 1) {
+    return false;
+  }
 
-  // Can only be caught if:
-  // 1. Player has exactly one card
-  // 2. Player hasn't said UNO
-  // 3. Player just played (is in current turn)
-  // 4. Next player hasn't played or drawn yet
-  return (
-    accusedHand.length === 1 &&
-    !hand.saidUno.has(action.accused) &&
-    hand.discardPile.length > 1 &&
-    hand.playerInTurn ===
-      (action.accused + hand.direction + hand.playerCount) % hand.playerCount
-  );
+  // Must be the last player to have played
+  const expectedCurrentPlayer = (action.accused + hand.direction + hand.playerCount) % hand.playerCount;
+  if (hand.playerInTurn !== expectedCurrentPlayer) {
+    return false;
+  }
+
+  // UNO declaration is valid if:
+  // 1. They said UNO (in saidUno set)
+  // 2. They have one card
+  // 3. They were the last to play
+  // This captures declarations made just before or after playing
+  // while invalid declarations during other turns get cleared
+  const validUnoDeclaration = hand.saidUno.has(action.accused);
+
+  // Return true if they can be caught (no valid UNO declaration)
+  return !validUnoDeclaration;
 }
 
 export function catchUnoFailure(action: UnoAction, hand: Hand): Hand {
@@ -329,13 +426,31 @@ export function catchUnoFailure(action: UnoAction, hand: Hand): Hand {
 
   // Add 4 cards to accused player's hand
   const newHands = [...hand.hands];
-  const [drawnCards, newDrawPile] = deal(hand.drawPile, 4);
+  let newDrawPile = [...hand.drawPile];
+  let newDiscardPile = [...hand.discardPile];
+
+  // If draw pile is running low, shuffle discard pile
+  if (newDrawPile.length < 4) {
+    // Keep top card
+    const topCard = newDiscardPile[newDiscardPile.length - 1];
+    // Shuffle rest of discard
+    const shuffledCards = hand._shuffler(newDiscardPile.slice(0, -1));
+    // Add to draw pile
+    newDrawPile = [...newDrawPile, ...shuffledCards];
+    // Reset discard to just top card
+    newDiscardPile = [topCard];
+  }
+
+  // Draw 4 cards
+  const drawnCards = newDrawPile.slice(0, 4);
   newHands[action.accused] = [...newHands[action.accused], ...drawnCards];
+  newDrawPile = newDrawPile.slice(4);
 
   return {
     ...hand,
     hands: newHands,
     drawPile: newDrawPile,
+    discardPile: newDiscardPile,
   };
 }
 

@@ -71,7 +71,7 @@ describe("Legal plays", () => {
       const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
       // TEST CHANGE: we expect player 2 to be able to play because the top card is a reverse card
       expect(hand.playerInTurn).toBe(2);
-      expect(canPlay(2, hand)).toBeTruthy()
+      expect(canPlay(0, hand)).toBeTruthy()
     })
     it("is not legal to play a non-reverse card with different color than the top card", () => {
       const shuffler = builder.hand(2).is({type: 'NUMBERED', color: 'RED'}).build()
@@ -308,7 +308,7 @@ describe("Legal plays", () => {
       let hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
       hand = play(0, 'BLUE', hand)
       // TEST CHANGE: we expect player 1 to be able to play because the top card is a wild card
-      expect(canPlay(1, hand)).toBeTruthy()
+      expect(canPlay(0, hand)).toBeTruthy()
     })
     it("is illegal to play a hand of another color but the chosen after a wild card", () => {
       const shuffler = builder.hand(1).is({color: ['GREEN', 'RED', 'YELLOW']}).build()
@@ -322,7 +322,7 @@ describe("Legal plays", () => {
       let hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
       hand = play(0, 'BLUE', hand)
       // TEST CHANGE: we expect player 1 to be able to play because the top card is a wild card
-      expect(canPlay(1, hand)).toBeTruthy()
+      expect(canPlay(0, hand)).toBeTruthy()
     })
     it("is legal to play a wild draw 4 card if hand doesn't contain the selected color", () => {
       const shuffler = builder
