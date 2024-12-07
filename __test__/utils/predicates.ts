@@ -27,7 +27,3 @@ export function is(spec: CardSpec): CardPredicate {
     }    
   }  
 }  
-
-export function not(pred: CardPredicate): CardPredicate {
-  return c => !pred(c)
-}
