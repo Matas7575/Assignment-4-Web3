@@ -1,4 +1,4 @@
-import { describe, it, expect, jest } from '@jest/globals'
+import { describe, it, expect, jest, afterEach } from '@jest/globals'
 import { createHand, createInitialDeck} from '../utils/test_adapter'
 import { Hand } from '../../src/model/hand'
 import { shuffleBuilder } from '../utils/shuffling'
@@ -10,15 +10,22 @@ const normalShuffle = shuffleBuilder()
 .build()
 
 describe("Hand set up", () => {
+  // TEST CHANGE: added afterEach to reset hand after each test to mitigate memory leak
+  let hand: Hand | null = null;
+
+  afterEach(() => {
+    hand = null;
+  });
+  
   const initialDeck = createInitialDeck()
   const dealtCardsCount = 4 * 7
   const cards = normalShuffle(initialDeck)
-  const hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 1, shuffler: deterministicShuffle(cards)})
+  hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 1, shuffler: deterministicShuffle(cards)})
   it("has as many players as set in the properties", () => {
-    expect(hand.playerCount).toBe(4)
+    expect(hand!.playerCount).toBe(4)
   })
   it("has the players set in the properties", () => {
-    expect(hand.players).toEqual(['a', 'b', 'c', 'd'])
+    expect(hand!.players).toEqual(['a', 'b', 'c', 'd'])
   })
   it("requires at least 2 players", () => {
     expect(() => createHand({players: ['a'], dealer: 1})).toThrow()
@@ -27,7 +34,7 @@ describe("Hand set up", () => {
     expect(() => createHand({players: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'], dealer: 1})).toThrow()
   })
   it("selects dealer set in the properties", () => {
-    expect(hand.dealer).toBe(1)
+    expect(hand!.dealer).toBe(1)
   })
   it("shuffles the deck", () => {
     const mockShuffler = jest.fn(noShuffle)
@@ -35,10 +42,10 @@ describe("Hand set up", () => {
     expect(mockShuffler).toBeCalledTimes(1)
   })
   it("deals 7 cards to each player", () => {
-    expect(hand.hands[0].length).toBe(7)
-    expect(hand.hands[1].length).toBe(7)
-    expect(hand.hands[2].length).toBe(7)
-    expect(hand.hands[3].length).toBe(7)
+    expect(hand!.hands[0].length).toBe(7)
+    expect(hand!.hands[1].length).toBe(7)
+    expect(hand!.hands[2].length).toBe(7)
+    expect(hand!.hands[3].length).toBe(7)
   })
   it("deals 7 cards to each player from the top of the deck", () => {
     const cards = normalShuffle(initialDeck)
@@ -49,11 +56,11 @@ describe("Hand set up", () => {
   })
   it("creates a discard pile with the top card", () => {
     const undealtCards = cards.slice(dealtCardsCount)  
-    expect(hand.discardPile).toEqual(undealtCards.slice(0, 1))
+    expect(hand!.discardPile).toEqual(undealtCards.slice(0, 1))
   })
   it("keeps the undealt cards in the draw pile", () => {
     const undealtCards = cards.slice(dealtCardsCount)    
-    expect(hand.drawPile).toEqual(undealtCards.slice(1))
+    expect(hand!.drawPile).toEqual(undealtCards.slice(1))
   })
   it("reshuffles if the top of the discard pile is a wild card", () => {
     const wildOnDiscardTop = shuffleBuilder().discard().is({type: 'WILD'}).build()

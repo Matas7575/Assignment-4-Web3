@@ -59,13 +59,14 @@ export function createHand(
 
   if (discard[0].type === "REVERSE") {
     direction = -1;
-    initialPlayer = dealer > 0 ? dealer - 1 : players.length - 1;
+    initialPlayer = (dealer - 1 + players.length) % players.length;
   } else if (discard[0].type === "SKIP") {
     initialPlayer = (dealer + 2) % players.length;
   } else if (discard[0].type === "DRAW") {
     const nextPlayer = (dealer + 1) % players.length;
     hands[nextPlayer].push(...drawPile.slice(0, 2));
     drawPile = drawPile.slice(2);
+    initialPlayer = (dealer + 2) % players.length;
   }
 
   return {

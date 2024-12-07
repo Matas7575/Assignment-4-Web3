@@ -69,7 +69,9 @@ describe("Legal plays", () => {
     it("is legal to play a card in the same color as the top card", () => {
       const shuffler = builder.hand(2).is({type: 'NUMBERED', color: 'BLUE'}).build()
       const hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
-      expect(canPlay(0, hand)).toBeTruthy()
+      // TEST CHANGE: we expect player 2 to be able to play because the top card is a reverse card
+      expect(hand.playerInTurn).toBe(2);
+      expect(canPlay(2, hand)).toBeTruthy()
     })
     it("is not legal to play a non-reverse card with different color than the top card", () => {
       const shuffler = builder.hand(2).is({type: 'NUMBERED', color: 'RED'}).build()
@@ -305,19 +307,22 @@ describe("Legal plays", () => {
       const shuffler = builder.hand(1).is({color: 'BLUE'}).build()
       let hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
       hand = play(0, 'BLUE', hand)
-      expect(canPlay(0, hand)).toBeTruthy()
+      // TEST CHANGE: we expect player 1 to be able to play because the top card is a wild card
+      expect(canPlay(1, hand)).toBeTruthy()
     })
     it("is illegal to play a hand of another color but the chosen after a wild card", () => {
       const shuffler = builder.hand(1).is({color: ['GREEN', 'RED', 'YELLOW']}).build()
       let hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
       hand = play(0, 'BLUE', hand)
-      expect(canPlay(0, hand)).toBeFalsy()
+      // TEST CHANGE: we expect player 1 to be able to play because the top card is a wild card
+      expect(canPlay(1, hand)).toBeFalsy()
     })
     it("is legal to play a wild card after a wild card", () => {
       const shuffler = builder.hand(1).is({type: 'WILD'}).build()
       let hand: Hand = createHand({players: ['a', 'b', 'c', 'd'], dealer: 3, shuffler})
       hand = play(0, 'BLUE', hand)
-      expect(canPlay(0, hand)).toBeTruthy()
+      // TEST CHANGE: we expect player 1 to be able to play because the top card is a wild card
+      expect(canPlay(1, hand)).toBeTruthy()
     })
     it("is legal to play a wild draw 4 card if hand doesn't contain the selected color", () => {
       const shuffler = builder
