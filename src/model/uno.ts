@@ -4,6 +4,17 @@ import { createHand, score as handScore } from "./hand";
 import type { Randomizer, Shuffler } from "../utils/random_utils";
 import { standardRandomizer, standardShuffler } from "../utils/random_utils";
 
+/**
+ * Properties for creating a new game.
+ * 
+ * @interface Props
+ * @property {string[]} [players] - The names of the players.
+ * @property {number} [targetScore] - The target score to win the game.
+ * @property {Randomizer} [randomizer] - The randomizer function to select the dealer.
+ * @property {Shuffler<Card>} [shuffler] - The shuffler function to shuffle the cards.
+ * @property {number} [cardsPerPlayer] - The number of cards dealt to each player.
+ * @category Types
+ */
 export interface Props {
   players?: string[];
   targetScore?: number;
@@ -12,6 +23,18 @@ export interface Props {
   cardsPerPlayer?: number;
 }
 
+/**
+ * Represents the state of the game.
+ * 
+ * @interface Game
+ * @property {number} playerCount - The number of players in the game.
+ * @property {string[]} players - The names of the players.
+ * @property {number[]} scores - The scores of the players.
+ * @property {number} targetScore - The target score to win the game.
+ * @property {Hand} [currentHand] - The current hand being played.
+ * @property {number} [winner] - The index of the winning player, if any.
+ * @category Types
+ */
 export interface Game {
   playerCount: number;
   players: string[];
@@ -21,6 +44,16 @@ export interface Game {
   winner?: number;
 }
 
+/**
+ * Creates a new game.
+ * 
+ * @param {Props} [props={}] - The properties for creating the game.
+ * @returns {Game} The initial state of the game.
+ * @throws {Error} If the number of players is less than 2 or the target score is not positive.
+ * @category Functions
+ * @example
+ * const game = createGame({ players: ['Alice', 'Bob'], targetScore: 200 });
+ */
 export function createGame({
   players = ["A", "B"],
   targetScore = 500,
@@ -46,6 +79,17 @@ export function createGame({
   };
 }
 
+/**
+ * Plays an action in the game.
+ * 
+ * @param {(h: Hand) => Hand} action - The action to perform on the current hand.
+ * @param {Game} game - The current state of the game.
+ * @returns {Game} The new state of the game after the action is performed.
+ * @throws {Error} If the game is over.
+ * @category Functions
+ * @example
+ * const newGame = play(hand => draw(hand), game);
+ */
 export function play(action: (h: Hand) => Hand, game: Game): Game {
   if (!game.currentHand) {
     throw new Error("Game is over");
