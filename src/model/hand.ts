@@ -1,6 +1,23 @@
 import { Deck, Card, deal, createInitialDeck, Color } from "./deck";
 import { Shuffler, standardShuffler } from "../utils/random_utils";
 
+/**
+ * Represents the state of a hand in the game.
+ * 
+ * @interface Hand
+ * @property {number} playerCount - The number of players in the game.
+ * @property {string[]} players - The names of the players.
+ * @property {Card[][]} hands - The cards held by each player.
+ * @property {Card[]} drawPile - The draw pile of cards.
+ * @property {Card[]} discardPile - The discard pile of cards.
+ * @property {number} dealer - The index of the dealer.
+ * @property {number} [playerInTurn] - The index of the player whose turn it is.
+ * @property {Color} currentColor - The current color in play.
+ * @property {1 | -1} direction - The direction of play (1 for clockwise, -1 for counterclockwise).
+ * @property {Set<number>} saidUno - The set of players who have said "UNO".
+ * @property {Shuffler<Card>} _shuffler - The shuffler function used to shuffle the cards.
+ * @category Types
+ */
 export interface Hand {
   playerCount: number;
   players: string[];
@@ -15,13 +32,42 @@ export interface Hand {
   _shuffler: Shuffler<Card>;
 }
 
+/**
+ * Represents an action in the game.
+ * 
+ * @interface UnoAction
+ * @property {number} accuser - The index of the player accusing another player.
+ * @property {number} accused - The index of the player being accused.
+ * @category Types
+ */
 export interface UnoAction {
   accuser: number;
   accused: number;
 }
 
+/**
+ * Type alias for a function that performs an action on a hand.
+ * 
+ * @typedef {function} Action
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {Hand} The new state of the hand after the action.
+ * @category Types
+ */
 export type Action = (hand: Hand) => Hand;
 
+/**
+ * Creates a new hand for the game.
+ * 
+ * @param {string[]} players - The names of the players.
+ * @param {number} dealer - The index of the dealer.
+ * @param {Shuffler<Card>} [shuffler=standardShuffler] - The shuffler function used to shuffle the cards.
+ * @param {number} [cardsPerPlayer=7] - The number of cards dealt to each player.
+ * @returns {Hand} The initial state of the hand.
+ * @throws {Error} If the number of players is less than 2 or more than 10.
+ * @category Functions
+ * @example
+ * const hand = createHand(['Alice', 'Bob'], 0);
+ */
 export function createHand(
   players: string[],
   dealer: number,
@@ -85,6 +131,16 @@ export function createHand(
   };
 }
 
+/**
+ * Checks if a card can be played.
+ * 
+ * @param {number} cardIdx - The index of the card in the player's hand.
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {boolean} True if the card can be played, false otherwise.
+ * @category Functions
+ * @example
+ * const canPlayCard = canPlay(0, hand);
+ */
 export function canPlay(cardIdx: number, hand: Hand): boolean {
   if (
     cardIdx < 0 ||
@@ -128,6 +184,15 @@ export function canPlay(cardIdx: number, hand: Hand): boolean {
   return false;
 }
 
+/**
+ * Checks if any card in the player's hand can be played.
+ * 
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {boolean} True if any card can be played, false otherwise.
+ * @category Functions
+ * @example
+ * const canPlayAnyCard = canPlayAny(hand);
+ */
 export function canPlayAny(hand: Hand): boolean {
   if (hand.playerInTurn === undefined) return false;
 
@@ -139,10 +204,32 @@ export function canPlayAny(hand: Hand): boolean {
   );
 }
 
+/**
+ * Gets the top card of the discard pile.
+ * 
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {Card} The top card of the discard pile.
+ * @category Functions
+ * @example
+ * const topCard = topOfDiscard(hand);
+ */
 export function topOfDiscard(hand: Hand): Card {
   return hand.discardPile[hand.discardPile.length - 1];
 }
 
+/**
+ * Checks if a specific card can be played.
+ * 
+ * @function canPlayCard
+ * @param {Card} card - The card to check.
+ * @param {Card} topCard - The top card of the discard pile.
+ * @param {Card[]} playerHand - The player's hand.
+ * @param {Color} currentColor - The current color in play.
+ * @returns {boolean} True if the card can be played, false otherwise.
+ * @category Functions
+ * @example
+ * const canPlay = canPlayCard(card, topCard, playerHand, currentColor);
+ */
 function canPlayCard(
   card: Card,
   topCard: Card,
@@ -165,6 +252,18 @@ function canPlayCard(
   );
 }
 
+/**
+ * Plays a card from the player's hand.
+ * 
+ * @param {number} cardIdx - The index of the card in the player's hand.
+ * @param {Color} [chosenColor] - The chosen color for wild cards.
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {Hand} The new state of the hand after the card is played.
+ * @throws {Error} If the card cannot be played.
+ * @category Functions
+ * @example
+ * const newHand = play(0, 'RED', hand);
+ */
 export function play(
   cardIdx: number,
   chosenColor: Color | undefined,
@@ -278,6 +377,16 @@ export function play(
   };
 }
 
+/**
+ * Draws a card from the draw pile.
+ * 
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {Hand} The new state of the hand after drawing a card.
+ * @throws {Error} If the game is over.
+ * @category Functions
+ * @example
+ * const newHand = draw(hand);
+ */
 export function draw(hand: Hand): Hand {
   if (hand.playerInTurn === undefined) {
     throw new Error("Game is over");
@@ -330,17 +439,44 @@ export function draw(hand: Hand): Hand {
   };
 }
 
+/**
+ * Checks if the game has ended.
+ * 
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {boolean} True if the game has ended, false otherwise.
+ * @category Functions
+ * @example
+ * const gameEnded = hasEnded(hand);
+ */
 export function hasEnded(hand: Hand): boolean {
   return (
     hand.playerInTurn === undefined || hand.hands.some((h) => h.length === 0)
   );
 }
 
+/**
+ * Gets the index of the winning player.
+ * 
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {number | undefined} The index of the winning player, or undefined if there is no winner.
+ * @category Functions
+ * @example
+ * const winningPlayer = winner(hand);
+ */
 export function winner(hand: Hand): number | undefined {
   const winningIdx = hand.hands.findIndex((h) => h.length === 0);
   return winningIdx === -1 ? undefined : winningIdx;
 }
 
+/**
+ * Calculates the score for the current hand.
+ * 
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {number | undefined} The score for the current hand, or undefined if the game has not ended.
+ * @category Functions
+ * @example
+ * const handScore = score(hand);
+ */
 export function score(hand: Hand): number | undefined {
   if (!hasEnded(hand)) return undefined;
 
@@ -371,6 +507,18 @@ export function score(hand: Hand): number | undefined {
   }, 0);
 }
 
+/**
+ * Deals hands to players from the deck.
+ * 
+ * @function dealHands
+ * @param {Card[]} deck - The deck of cards to deal from.
+ * @param {number} playerCount - The number of players.
+ * @param {number} cardsPerPlayer - The number of cards per player.
+ * @returns {[Card[][], Card[]]} A tuple containing the hands dealt to players and the remaining deck.
+ * @category Functions
+ * @example
+ * const [hands, remainingDeck] = dealHands(deck, 4, 7);
+ */
 function dealHands(
   deck: Card[],
   playerCount: number,
@@ -388,6 +536,17 @@ function dealHands(
   return [hands, remainingDeck];
 }
 
+/**
+ * Checks if a player can be caught for failing to say "UNO".
+ * 
+ * @param {UnoAction} action - The action containing the accuser and accused player indices.
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {boolean} True if the player can be caught for failing to say "UNO", false otherwise.
+ * @throws {Error} If the accused player index is invalid.
+ * @category Functions
+ * @example
+ * const canCatch = checkUnoFailure({ accuser: 1, accused: 0 }, hand);
+ */
 export function checkUnoFailure(action: UnoAction, hand: Hand): boolean {
   // Validate indices
   if (action.accused < 0 || action.accused >= hand.playerCount) {
@@ -419,6 +578,17 @@ export function checkUnoFailure(action: UnoAction, hand: Hand): boolean {
   return !validUnoDeclaration;
 }
 
+/**
+ * Catches a player for failing to say "UNO".
+ * 
+ * @param {UnoAction} action - The action containing the accuser and accused player indices.
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {Hand} The new state of the hand after catching the player.
+ * @throws {Error} If the UNO catch is invalid.
+ * @category Functions
+ * @example
+ * const newHand = catchUnoFailure({ accuser: 1, accused: 0 }, hand);
+ */
 export function catchUnoFailure(action: UnoAction, hand: Hand): Hand {
   if (!checkUnoFailure(action, hand)) {
     throw new Error("Invalid UNO catch");
@@ -454,9 +624,25 @@ export function catchUnoFailure(action: UnoAction, hand: Hand): Hand {
   };
 }
 
+/**
+ * Declares "UNO" for a player.
+ * 
+ * @param {number} player - The index of the player declaring "UNO".
+ * @param {Hand} hand - The current state of the hand.
+ * @returns {Hand} The new state of the hand after declaring "UNO".
+ * @throws {Error} If the player index is invalid or the game is over.
+ * @category Functions
+ * @example
+ * const newHand = sayUno(0, hand);
+ */
 export function sayUno(player: number, hand: Hand): Hand {
   if (player < 0 || player >= hand.playerCount) {
     throw new Error("Invalid player");
+  }
+
+  // Player can't say uno if the game is over
+  if (hand.playerInTurn === undefined) {
+    throw new Error("Game is over");
   }
 
   return {
